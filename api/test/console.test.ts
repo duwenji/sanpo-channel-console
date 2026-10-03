@@ -55,6 +55,9 @@ beforeEach(async () => {
     presignUpload: async (key) => ({ url: 'https://intake.example/', fields: { key } }),
     archiveUpload: async () => {},
     deleteUser: async () => {},
+    publishTrial: async (_k, sha) => `https://provider.example/trial/${sha}.zip`,
+    packageUrl: (sha) => `https://provider.example/pkg/${sha}.zip`,
+    signDocument: async () => ({ payload: '', keyId: 'k', sig: '' }),
   };
 });
 

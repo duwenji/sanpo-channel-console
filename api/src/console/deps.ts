@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException, TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import type { SignedDocument } from '@sanpo-console/protocol';
 import type { Trigger } from '../publish/ports.js';
 import { fail, type Caller } from './http.js';
 import { ulid, type CursorCodec } from './util.js';
@@ -22,6 +23,12 @@ export interface Deps {
   archiveUpload: (key: string) => Promise<void>;
   /** Deletes the Cognito user (API-001 C-4, leaving). */
   deleteUser: (sub: string) => Promise<void>;
+  /** Copies a package from the intake bucket to the public `trial/{sha256}.zip` (7 days) and returns its URL (ADR-001 A-13). */
+  publishTrial: (intakeKey: string, sha256: string) => Promise<string>;
+  /** The public URL of an approved package. */
+  packageUrl: (sha256: string) => string;
+  /** Signs a document with the active signing key in KMS (ADR-001 A-8). */
+  signDocument: (content: object) => Promise<SignedDocument>;
 }
 
 /** One entry of the audit log, written in the same transaction as the change (DM-001 AUDIT, DV-10). */

@@ -1,5 +1,6 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { accountId, b64url, generateEd25519, signEd25519, utf8 } from '@sanpo-console/protocol';
+import { accountId, b64url, generateEd25519, signDocument, signEd25519, utf8, verifyEd25519 } from '@sanpo-console/protocol';
+import { makeTestProvider, type TestProvider } from '@sanpo-console/protocol/testing';
 import { randomBytes, type KeyObject } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Deps } from '../src/console/deps.js';
@@ -21,6 +22,8 @@ let published: Trigger[];
 let archived: string[];
 let deleted: string[];
 let presigned: { key: string; contentType: string; maxBytes: number }[];
+let trials: string[];
+let provider: TestProvider;
 
 beforeAll(async () => {
   local = await startDynamoLocal();
@@ -34,12 +37,14 @@ beforeEach(async () => {
   archived = [];
   deleted = [];
   presigned = [];
+  trials = [];
+  provider = await makeTestProvider({ now: start });
   deps = {
     db,
     table,
     now: () => new Date(clock++),
     cursors: new CursorCodec(randomBytes(32)),
-    rootPublicKey: b64url.encode(new Uint8Array(32)),
+    rootPublicKey: b64url.encode(provider.rootKey),
     kmsPublicKey: async () => ({ keySpec: undefined, publicKey: new Uint8Array() }),
     requestPublish: async (t) => void published.push(t),
     presignUpload: async (key, contentType, maxBytes) => {
@@ -48,6 +53,12 @@ beforeEach(async () => {
     },
     archiveUpload: async (key) => void archived.push(key),
     deleteUser: async (sub) => void deleted.push(sub),
+    publishTrial: async (key, sha) => {
+      trials.push(key);
+      return `https://provider.example/trial/${sha}.zip`;
+    },
+    packageUrl: (sha) => `https://provider.example/pkg/${sha}.zip`,
+    signDocument: (content) => signDocument(content, provider.signing),
   };
 });
 
@@ -249,5 +260,57 @@ describe('leaving (API-001 C-4)', () => {
     const carol: Caller = { sub: 'sub-carol', roles: ['publisher'] };
     await call(carol, 'POST', '/api/publisher', { body: { displayName: 'c', contact: 'c' } });
     expect((await bind(carol, key.privateKey, key.publicKey)).body.code).toBe('account_id_taken');
+  });
+});
+
+describe('test tickets (API-002 試用チケット)', () => {
+  async function passedSubmission(state = 'awaiting_review') {
+    await activePublisher();
+    await call(alice, 'POST', '/api/channels', { body: { channelId: 'kamakura-history' } });
+    const created = await call(alice, 'POST', '/api/channels/kamakura-history/submissions', { body: {} });
+    const sid = created.body.submission.submissionId as string;
+    // As the machine review leaves it.
+    await deps.db.send(
+      new UpdateCommand({
+        TableName: deps.table, Key: { PK: 'CH#kamakura-history', SK: `SUB#${sid}` },
+        UpdateExpression: 'SET #s = :s, sha256 = :h, #size = :z, version = :v, validation = :val',
+        ExpressionAttributeNames: { '#s': 'state', '#size': 'size' },
+        ExpressionAttributeValues: { ':s': state, ':h': 'ab'.repeat(32), ':z': 1234, ':v': 3, ':val': { ok: true, errors: [] } },
+      }),
+    );
+    return sid;
+  }
+
+  it('signs a ticket the app can check, for a package that passed the machine review', async () => {
+    const sid = await passedSubmission();
+    const res = await call(alice, 'POST', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`);
+    expect(res.status).toBe(201);
+    const doc = res.body.document;
+    expect(res.body.qr).toBe(JSON.stringify(doc));
+    expect(doc.keyId).toBe('k-test');
+    expect(verifyEd25519(provider.signing.publicKey, b64url.decode(doc.payload), b64url.decode(doc.sig))).toBe(true);
+    const payload = JSON.parse(utf8.decode(b64url.decode(doc.payload)));
+    expect(payload).toMatchObject({
+      type: 'test-ticket', provider: provider.provider, channel: 'kamakura-history',
+      package: { url: `https://provider.example/trial/${'ab'.repeat(32)}.zip`, sha256: 'ab'.repeat(32), size: 1234, format: 1 },
+    });
+    expect(Date.parse(payload.expiresAt) - Date.parse(payload.issuedAt)).toBe(7 * 24 * 3600_000);
+    expect(trials).toEqual([`intake/kamakura-history/${sid}.zip`]);
+    expect((await call(alice, 'GET', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`)).body.items).toHaveLength(1);
+  });
+
+  it('takes a returned package from archive/, and none that failed or is still uploading', async () => {
+    const sid = await passedSubmission('returned');
+    await call(alice, 'POST', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`);
+    expect(trials).toEqual([`archive/kamakura-history/${sid}.zip`]);
+    await deps.db.send(new UpdateCommand({ TableName: deps.table, Key: { PK: 'CH#kamakura-history', SK: `SUB#${sid}` }, UpdateExpression: 'SET #s = :s', ExpressionAttributeNames: { '#s': 'state' }, ExpressionAttributeValues: { ':s': 'validation_failed' } }));
+    expect((await call(alice, 'POST', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`)).body.code).toBe('invalid_state');
+  });
+
+  it('allows 10 tickets a day, to the channel’s publisher only', async () => {
+    const sid = await passedSubmission();
+    for (let i = 0; i < 10; i++) expect((await call(alice, 'POST', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`)).status).toBe(201);
+    expect((await call(alice, 'POST', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`)).body.code).toBe('quota_exceeded');
+    expect((await call(operator, 'POST', `/api/channels/kamakura-history/submissions/${sid}/test-tickets`)).body.code).toBe('forbidden');
   });
 });

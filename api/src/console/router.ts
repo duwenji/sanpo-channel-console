@@ -35,6 +35,8 @@ const ROUTES: [string, string, Handler][] = [
   ['GET', '/api/channels/{channelId}/submissions', pub.listSubmissions],
   ['GET', '/api/channels/{channelId}/submissions/{submissionId}', pub.getSubmission],
   ['POST', '/api/channels/{channelId}/submissions/{submissionId}/withdraw', pub.withdrawSubmission],
+  ['POST', '/api/channels/{channelId}/submissions/{submissionId}/test-tickets', pub.issueTestTicket],
+  ['GET', '/api/channels/{channelId}/submissions/{submissionId}/test-tickets', pub.listTestTickets],
   // The operator.
   ['POST', '/api/admin/channels/{channelId}/revoke', op.revokeChannel],
   ['GET', '/api/admin/publishers', op.listPublishers],

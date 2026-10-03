@@ -47,14 +47,16 @@ flowchart LR
 | `packages/protocol` | API-002 の文書の作成と検証（署名、要約、ID、エラーコード） | DES-001 |
 | `packages/api-types` | 管理 API の型（`docs/api/console.openapi.yaml` から生成） | DES-002 |
 | `api/src/publish` | 公開の処理（Lambda）。DB・S3・CloudFront・KMS は差し替え口の後ろ | DES-001 |
-| `api/src/console` | 管理 API（Lambda。運用者の操作 `operator.ts`、配信元の操作 `publisher.ts`）と Cognito の post-confirmation トリガー | DES-002・DES-003 |
+| `api/src/console` | 管理 API（Lambda。運用者の操作 `operator.ts`、配信元の操作 `publisher.ts`）と Cognito の post-confirmation トリガー | DES-002・DES-003・DES-004 |
+| `validator` | 機械審査の Lambda（Kotlin、Gradle、station-format） | DES-004 |
 | `web` | 運用者・配信元の画面（React + Vite）。配信元の鍵の作成と署名は `web/src/publisher-crypto.ts` | DES-002・DES-003 |
 | `tools/root-key` | ルート鍵の CLI（オフラインの端末で使う） | DES-001 |
 | `tools/provision` | 配備した提供元の初期設定（署名鍵・鍵セットの登録と初回の公開） | DES-001 |
+| `tools/e2e` | 開発用の環境での通しの確認（機械審査、試用チケット） | DES-004 |
 | `conformance` | 任意の提供元に対する準拠テスト | DES-001 |
 | `infra` | AWS CDK。環境ごとの設定は `infra/lib/config.ts` | ADR-001 |
 
-SanpoGuide の `station-format`（パッケージの確認・プロンプト・組み込みのチャンネル）は、GitHub Packages の `com.example.sanpoguide:station-format` を使う予定です（🚧 機械審査の Lambda。読むには `read:packages` のトークンが要る）。
+機械審査の Lambda（`validator`）は、SanpoGuide の `station-format` を GitHub Packages（`com.example.sanpoguide:station-format`）から読み込みます。読むには `read:packages` のトークンが要ります（CI は `GITHUB_TOKEN`。手元は `~/.gradle/gradle.properties` に `gpr.user`・`gpr.key` を書くか、SanpoGuide で `./gradlew :station-format:publishToMavenLocal`）。
 
 ## 2. 準備
 
@@ -62,6 +64,7 @@ SanpoGuide の `station-format`（パッケージの確認・プロンプト・�
 |---|---|
 | Node.js | 22 以上（Lambda は Node.js 22） |
 | Docker | 管理 API のテストが DynamoDB Local を起動する |
+| JDK 17 以上 | 機械審査（`validator`）のビルド。Lambda は Java 21 で動く |
 | AWS CLI v2 | Windows は `C:\Program Files\Amazon\AWSCLIV2`。Git Bash の PATH に入っていないことがある |
 | AWS の認証 | IAM Identity Center（SSO）のプロファイル。開発用は `sanpo-dev`（`aws configure sso --profile sanpo-dev`） |
 | GitHub CLI | PR と CI の確認 |
@@ -78,6 +81,7 @@ npm ci
 npx tsc -b              # 型の確認（TypeScript 7）
 npx vitest run          # すべてのテスト（Docker が要る）
 npm run build -w web    # 画面をビルド（cdk synth の前に要る）
+(cd validator && ./gradlew test lambdaZip)   # 機械審査をテストしてビルド（cdk synth の前に要る。JDK 17 以上）
 ```
 
 | テスト | 何を確かめるか |

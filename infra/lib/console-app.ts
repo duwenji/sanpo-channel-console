@@ -12,6 +12,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as secrets from 'aws-cdk-lib/aws-secretsmanager';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { Construct } from 'constructs';
@@ -28,6 +29,13 @@ export interface ConsoleAppProps {
   table: dynamodb.ITableV2;
   publisher: lambda.IFunction;
   signingKeys: kms.IKey[];
+  /** Where test tickets' packages go (`trial/`) and the public URL in front of it. */
+  publicBucket: s3.IBucket;
+  providerUrl: string;
+  /** Where the machine review keeps the review samples' prompts (`samples/`). */
+  recordsBucket: s3.IBucket;
+  /** The built machine-review Lambda (`validator/build/lambda/validator.zip`); build it before synthesizing. */
+  validatorZip: string;
 }
 
 const lambdaDefaults = (repoRoot: string): Partial<nodejs.NodejsFunctionProps> => ({
@@ -44,12 +52,16 @@ const lambdaDefaults = (repoRoot: string): Partial<nodejs.NodejsFunctionProps> =
  * sent to the API (ADR-001 A-3, A-4 as revised in 1.2, A-18; API-001 C-5, C-7).
  */
 export class ConsoleApp extends Construct {
+  /** The console API, which also signs test tickets (the stack lets it sign in the key policy). */
+  readonly consoleFunction: lambda.IFunction;
+
   constructor(scope: Construct, id: string, props: ConsoleAppProps) {
     super(scope, id);
     const { config, repoRoot } = props;
     const prod = config.name === 'prod';
     const stack = Stack.of(this);
     if (!existsSync(`${props.webDist}/index.html`)) throw new Error(`build the SPA first (npm run build -w web): ${props.webDist}`);
+    if (!existsSync(props.validatorZip)) throw new Error(`build the machine review first (cd validator && ./gradlew build): ${props.validatorZip}`);
 
     // ---- Cognito (ADR-001 A-4, 1.2: one pool, TOTP MFA for everyone) ----
     const userPool = new cognito.UserPool(this, 'UserPool', {
@@ -275,6 +287,11 @@ export class ConsoleApp extends Construct {
       consoleFn.addEnvironment('CURSOR_KEY', randomBytes(32).toString('base64url'));
     }
     consoleFn.addEnvironment('INTAKE_BUCKET', intakeBucket.bucketName);
+    consoleFn.addEnvironment('PUBLIC_BUCKET', props.publicBucket.bucketName);
+    consoleFn.addEnvironment('PROVIDER_URL', props.providerUrl);
+    // Test tickets: the package is copied to trial/ (gone after 7 days), from intake/ or archive/.
+    props.publicBucket.grantPut(consoleFn, 'trial/*');
+    intakeBucket.grantRead(consoleFn, 'archive/*');
     consoleFn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
     consoleFn.addEnvironment('NODE_OPTIONS', '--enable-source-maps');
     // Presigning needs the right to put; moving to archive/ needs read, put and delete.
@@ -308,6 +325,31 @@ export class ConsoleApp extends Construct {
       distributionPaths: ['/index.html', '/config.json'],
       prune: true,
     });
+
+    this.consoleFunction = consoleFn;
+
+    // ---- the machine review (ADR-001 A-11) ----
+    const validator = new lambda.Function(this, 'MachineReview', {
+      runtime: lambda.Runtime.JAVA_21,
+      architecture: lambda.Architecture.ARM_64,
+      handler: 'console.validator.Handler::handleRequest',
+      code: lambda.Code.fromAsset(props.validatorZip),
+      memorySize: 1536,
+      timeout: Duration.minutes(1),
+      ...logGroupFor(this, 'MachineReviewLogs', config),
+      environment: {
+        TABLE_NAME: props.table.tableName,
+        INTAKE_BUCKET: intakeBucket.bucketName,
+        RECORDS_BUCKET: props.recordsBucket.bucketName,
+        JAVA_TOOL_OPTIONS: '-XX:+TieredCompilation -XX:TieredStopAtLevel=1',
+      },
+    });
+    props.table.grantReadWriteData(validator);
+    intakeBucket.grantRead(validator, 'intake/*');
+    intakeBucket.grantDelete(validator, 'intake/*');
+    intakeBucket.grantPut(validator, 'archive/*');
+    props.recordsBucket.grantPut(validator, 'samples/*');
+    intakeBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(validator), { prefix: 'intake/' });
 
     new CfnOutput(stack, 'ConsoleUrl', { value: consoleUrl });
     new CfnOutput(stack, 'IntakeBucketName', { value: intakeBucket.bucketName });

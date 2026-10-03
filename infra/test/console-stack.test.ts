@@ -10,6 +10,9 @@ import { ConsoleStack } from '../lib/console-stack.js';
 // A stand-in for web/dist, so the tests don't need the SPA built.
 const webDist = mkdtempSync(join(tmpdir(), 'web-dist-'));
 writeFileSync(join(webDist, 'index.html'), '<!doctype html>');
+// And for the machine review's package.
+const validatorZip = join(webDist, 'validator.zip');
+writeFileSync(validatorZip, 'zip');
 
 function template(name: 'dev' | 'prod') {
   // Skip bundling the Lambda code; tests look at the resources, not the bundle.
@@ -17,6 +20,7 @@ function template(name: 'dev' | 'prod') {
   const stack = new ConsoleStack(app, `Test-${name}`, {
     config: { ...configs[name], rootPublicKey: 'A'.repeat(43) },
     webDist,
+    validatorZip,
     env: { region: 'ap-northeast-1', account: '123456789012' },
   });
   return Template.fromStack(stack);
@@ -145,5 +149,15 @@ describe('ConsoleStack', () => {
     const policies = JSON.stringify(prod.findResources('AWS::IAM::Policy'));
     expect(policies).toContain('cognito-idp:AdminDeleteUser');
     expect(JSON.stringify(prod.findResources('AWS::CloudFront::ResponseHeadersPolicy'))).toContain('IntakeBucket');
+  });
+
+  it('reviews uploads with the Java Lambda, and lets the console API sign tickets only through the key policy', () => {
+    prod.hasResourceProperties('AWS::Lambda::Function', { Runtime: 'java21', Handler: 'console.validator.Handler::handleRequest' });
+    prod.hasResourceProperties('Custom::S3BucketNotifications', {
+      NotificationConfiguration: { LambdaFunctionConfigurations: [Match.objectLike({ Events: ['s3:ObjectCreated:*'], Filter: { Key: { FilterRules: [{ Name: 'prefix', Value: 'intake/' }] } } })] },
+    });
+    const keyPolicy = JSON.stringify(prod.findResources('AWS::KMS::Key'));
+    expect(keyPolicy.match(/ED25519_SHA_512/g)?.length).toBe(2);
+    expect(JSON.stringify(prod.findResources('AWS::IAM::Policy'))).not.toContain('kms:Sign');
   });
 });

@@ -2,7 +2,7 @@ import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-clo
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetPublicKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { b64url, publicKeyFromRaw, rawPublicKey, utf8 } from '@sanpo-console/protocol';
 import { signKeyset, verifyKeyset } from '@sanpo-console/root-key';
 import { createPublicKey } from 'node:crypto';
@@ -106,6 +106,16 @@ async function main() {
         ],
       }),
     );
+    // Keep the signing keys' validity next to them, as the operator screen does (DES-002 J-4).
+    for (const e of entries) {
+      await db.send(
+        new UpdateCommand({
+          TableName: table, Key: { PK: 'SIGNKEY', SK: `KEY#${e.keyId}` },
+          UpdateExpression: 'SET #s = :active, notBefore = :nb, notAfter = :na', ExpressionAttributeNames: { '#s': 'status' },
+          ExpressionAttributeValues: { ':active': 'active', ':nb': e.notBefore, ':na': e.notAfter },
+        }),
+      );
+    }
     console.log(`registered keyset seq ${seq} (${entries.map((e) => e.keyId).join(', ')})`);
   } else {
     console.log(`keyset seq ${current!.seq} already lists every key`);

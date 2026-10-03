@@ -21,7 +21,8 @@ tools/provision    配備した提供元に署名鍵・鍵セットを登録し�
 conformance/       API-002 の準拠テスト（任意の提供元の URL に対して流せる）
 infra/             AWS CDK
 web/               運用者・配信元の画面（React + Vite）
-validator/         機械審査の Lambda（予定。Kotlin、station-format）
+validator/         機械審査の Lambda（Kotlin、Gradle、station-format）
+tools/e2e          開発用の環境での通しの確認
 ```
 
 ## 使い方
@@ -59,5 +60,6 @@ cd infra && npx cdk synth -c env=dev -c rootPublicKey=<base64url>
 - [DES-001](docs/design/DES-001-publisher.md): 公開の処理・ルート鍵の CLI・準拠テスト
 - [DES-002](docs/design/DES-002-operator-console.md): 運用者の画面
 - [DES-003](docs/design/DES-003-publisher-console.md): 配信元の API と画面（3a）
+- [DES-004](docs/design/DES-004-machine-review.md): 機械審査と試用チケット（3b）
 - [費用](docs/operations/cost.md): 開発用は約 1.5 USD/月
 - [配備の手順](docs/operations/deploy.md): 開発用は配備済み（リスト https://d1vs7kc4zgmwrz.cloudfront.net、画面 https://d3gvjt5e1ced74.cloudfront.net）

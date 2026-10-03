@@ -1,4 +1,6 @@
+import qrcode from 'qrcode-generator';
 import { Fragment, useState, type FormEvent } from 'react';
+import type { Schemas } from '@sanpo-console/api-types';
 import { Link, useParams } from 'react-router';
 import { describe, ifMatch } from '../../api';
 import { useSession } from '../../main';
@@ -53,6 +55,24 @@ export function PublisherChannels() {
   );
 }
 
+const TRIABLE = ['awaiting_review', 'in_review', 'returned', 'approved'];
+
+/** A test ticket as a QR code: the signed document itself (API-002 試用チケット). */
+function TicketQr({ ticket }: { ticket: Schemas['TestTicket'] }) {
+  const qr = qrcode(0, 'L');
+  qr.addData(ticket.qr);
+  qr.make();
+  return (
+    <div className="action">
+      <h3>試用チケット</h3>
+      <img alt="試用チケットの QR コード" src={qr.createDataURL(4, 4)} />
+      <p>
+        SanpoGuide アプリを開発者モードにして、この QR コードを読み込むと、審査の前にこのチャンネルを自分の端末で試せます。期限は <Time value={ticket.expiresAt} /> です。ほかの人と共有しないでください。
+      </p>
+    </div>
+  );
+}
+
 async function upload(target: { url: string; fields: Record<string, string> }, file: Blob) {
   const form = new FormData();
   for (const [k, v] of Object.entries(target.fields)) form.append(k, v);
@@ -79,6 +99,7 @@ export function PublisherChannel() {
   const [regions, setRegions] = useState('');
   const [note, setNote] = useState('');
   const [progress, setProgress] = useState<string>();
+  const [ticket, setTicket] = useState<Schemas['TestTicket']>();
   const [error, setError] = useState<string>();
 
   const submit = async (e: FormEvent) => {
@@ -108,7 +129,7 @@ export function PublisherChannel() {
       await upload(data.uploads.package, new Blob([new Uint8Array(signed.zip)], { type: 'application/zip' }));
       setProgress('アイコンを送っています…');
       await upload(data.uploads.icon, new Blob([icon], { type: 'image/png' }));
-      setProgress(`版 ${signed.version} を申請しました。機械の確認のあと、審査待ちになります。`);
+      setProgress(`版 ${signed.version} を申請しました。数十秒で機械の確認が終わります（「申請の状態を読み込み直す」で確かめてください）。`);
       setPassphrase('');
       subs.reload();
       ch.reload();
@@ -161,6 +182,18 @@ export function PublisherChannel() {
                     : '—'}
                 </td>
                 <td>
+                  {TRIABLE.includes(s.state) && s.validation?.ok && (
+                    <button
+                      className="link"
+                      onClick={() =>
+                        void api
+                          .POST('/api/channels/{channelId}/submissions/{submissionId}/test-tickets', { params: { path: { channelId, submissionId: s.submissionId } } })
+                          .then(({ data }) => setTicket(data), (err: unknown) => setError(describe(err)))
+                      }
+                    >
+                      試用チケット
+                    </button>
+                  )}{' '}
                   {(s.state === 'awaiting_review' || s.state === 'in_review') && (
                     <button
                       className="link"
@@ -179,6 +212,9 @@ export function PublisherChannel() {
           </tbody>
         </table>
       )}
+
+      <button onClick={() => subs.reload()}>申請の状態を読み込み直す</button>
+      {ticket && <TicketQr ticket={ticket} />}
 
       <form className="action" onSubmit={(e) => void submit(e)}>
         <h3>新しい版を申請する</h3>
