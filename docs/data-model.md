@@ -12,7 +12,7 @@
 | 作成者 | Claude（開発者との検討） |
 | 承認者 | 開発者（2026-10-03） |
 | ステータス | 承認済 |
-| 版 | 1.0 |
+| 版 | 1.1 |
 
 ## 目的・背景
 
@@ -66,6 +66,8 @@ DynamoDB では、取り出し方（アクセスパターン）からキーを�
 | M-11 | 同時に書かれたときの守り方 | 状態が変わる項目には `rev`（書くたびに 1 増やす）を持たせ、条件付き書き込みで後勝ちの上書きを防ぐ。状態の移り方は、移る前の状態を条件にして守る |
 | M-12 | 時刻と ID | 時刻は UTC の ISO 8601（ミリ秒まで）。1 日の上限は日本時間の日付で数える。新しく作る ID は ULID（作った順に並ぶ） |
 | M-13 | 公開の記録の本体 | リストの本体（署名済み）は、公開用のバケットのほかに、記録用のバケットに `seq` ごとに期限なしで残す。DynamoDB には `seq`・SHA-256・保存場所だけを持つ |
+| M-14 | 鍵の移し替えの単位（1.1） | 配信元ごと。配信元が使う鍵は 1 つなので、承認するとすべてのチャンネルが一緒に移る（API-001 C-11） |
+| M-15 | 退会（1.1） | 配信元を `deleted` にして表示名・連絡先を消す。操作の記録・アカウントIDの予約・チャンネル ID は残し、再利用させない（API-001 C-4） |
 
 ## 概念モデル（ERD）
 
@@ -79,7 +81,7 @@ erDiagram
     SUBMISSION ||--o{ REVIEW : "審査される"
     SUBMISSION ||--o{ TEST_TICKET : "試用チケットを出す"
     CHANNEL ||--o{ REVOCATION : "取り下げられる"
-    CHANNEL ||--o{ KEY_TRANSFER : "鍵を移し替える"
+    PUBLISHER ||--o{ KEY_TRANSFER : "鍵を移し替える（M-14）"
     PUBLICATION_HEAD ||--o{ PUBLICATION : "seq の履歴"
     KEYSET_HEAD ||--o{ KEYSET : "seq の履歴"
     KEYSET ||--o{ SIGNING_KEY : "載せる"
@@ -151,9 +153,11 @@ stateDiagram-v2
 
 **チャンネル（CHANNEL）**: `active`（承認済みの版がなくてもよい）→ `revoked`（取り下げ）→ 新しい版の承認で `active` に戻る。取り下げ中はリストに載らない
 
-**配信元（PUBLISHER）**: `pending_key`（登録直後。鍵の紐づけ待ち）→ `active` → `suspended`（運用者が停止）→ `active`（運用者が戻す）。`pending_key` と `suspended` のあいだは申請できない
+**配信元（PUBLISHER）**: `pending_key`（登録直後。鍵の紐づけ待ち）→ `active` → `suspended`（運用者が停止）→ `active`（運用者が戻す）。どの状態からも、配信元の退会で `deleted`（戻らない。M-15）。`active` 以外のあいだは申請できない
 
-**鍵の移し替え（KEY_TRANSFER）**: `requested`（配信元が新しい鍵を紐づけて申し出た）→ `approved`（運用者が本人確認して承認）／ `rejected`（認めない）／ `cancelled`（配信元が取り消した）
+**鍵の移し替え（KEY_TRANSFER）**: `requested`（配信元が新しい鍵を紐づけて申し出た）→ `approved`（運用者が本人確認して承認）／ `rejected`（認めない）／ `cancelled`（配信元が取り消した）。配信元ごとに `requested` は 1 つだけ
+
+**配信元の鍵（KEY）**: 最初の紐づけは `active`。移し替えを申し出た新しい鍵は `pending_transfer` で、承認で `active`（古い鍵は `unbound`）、認めない・取り消しで `unbound`
 
 ## 物理モデル
 
@@ -185,7 +189,7 @@ stateDiagram-v2
 | 審査の記録 | `CH#{channelId}` | `SUB#{submissionId}#REVIEW#{at}` | — | — |
 | 試用チケット | `CH#{channelId}` | `SUB#{submissionId}#TICKET#{issuedAt}` | — | — |
 | 取り下げ | `CH#{channelId}` | `REVOKE#{revokedAt}` | — | 7 日のあいだ `REVOKED` / `{revokedAt}#{channelId}` |
-| 鍵の移し替え | `CH#{channelId}` | `TRANSFER#{transferId}` | — | `requested` のとき `QUEUE#TRANSFER` / `{requestedAt}` |
+| 鍵の移し替え | `PUB#{publisherId}` | `TRANSFER#{transferId}` | — | `requested` のとき `QUEUE#TRANSFER` / `{requestedAt}` |
 | 公開の先頭 | `PUBLICATION` | `HEAD` | — | — |
 | 公開の履歴 | `PUBLICATION` | `SEQ#{seq を 10 桁で 0 埋め}` | — | — |
 | 鍵セットの先頭 | `KEYSET` | `HEAD` | — | — |
@@ -209,11 +213,13 @@ stateDiagram-v2
 | `ownerSub` | S | ○ | 持ち主の Cognito の `sub`（M-1） |
 | `displayName` | S | ○ | リストの `publisherName` に使う。1〜40 文字 |
 | `contact` | S | ○ | 審査・移し替えの連絡先（Cognito のメールとは別に持つ。本人確認の「別の経路」の候補。ADR-001 未決事項 No.6） |
-| `status` | S | ○ | `pending_key` / `active` / `suspended` |
+| `status` | S | ○ | `pending_key` / `active` / `suspended` / `deleted` |
+| `pendingTransferId` | S | — | `requested` の移し替え（1 つだけ。あいだは申請を受け付けない） |
 | `activeAccountId` | S | — | 使っている鍵のアカウントID（`sg1…`） |
 | `channelCount` | N | ○ | 持っているチャンネルの数（取り下げたものも数える。上限の回避を防ぐため） |
 | `limits` | M | — | 運用者が変えた上限（`channels`・`uploadsPerDay`・`ticketsPerDay`）。ないものは既定値（M-2） |
 | `suspendedReason` | S | — | 停止の理由 |
+| `deletedAt` | S | — | 退会した日時。退会すると `displayName`・`contact` を消す（M-15） |
 
 ### 配信元の鍵（KEY）
 
@@ -221,6 +227,7 @@ stateDiagram-v2
 |---|---|---|---|
 | `accountId` | S | ○ | `sg1…` |
 | `publicKey` | S | ○ | Ed25519 の公開鍵（base64url） |
+| `status` | S | ○ | `active` / `pending_transfer` / `unbound`（M-14） |
 | `boundAt` | S | ○ | 紐づけた日時（一度きりの文字列の署名を確かめた日時） |
 | `unboundAt` | S | — | 外した日時 |
 | `unboundReason` | S | — | `lost` / `leaked` / `other` と説明 |
@@ -259,6 +266,9 @@ stateDiagram-v2
 | `accountId` | S | ○ | 申請したときの配信元のアカウントID |
 | `state` | S | ○ | [状態の移り方](#状態の移り方)のとおり |
 | `intakeKey` | S | ○ | 受付用の S3 のキー `intake/{channelId}/{submissionId}.zip` |
+| `iconIntakeKey` | S | ○ | アイコンの受付用のキー `intake/{channelId}/{submissionId}.png` |
+| `iconSha256` | S | — | 届いたアイコン（機械審査で計算） |
+| `description`・`tags`・`regions` | S・L・L | — | リストに載せる項目のうち、パッケージにないもの（API-002 `channels[]`） |
 | `sha256`・`size` | S・N | — | 届いたパッケージ（機械審査で計算） |
 | `validation` | M | — | `{ ok, errors: [{ code, detail }], appStage, checkedAt, validatorVersion }`。`code` は API-003 のエラーコード |
 | `note` | S | — | 配信元から運用者への説明 |
@@ -273,7 +283,8 @@ stateDiagram-v2
 | `reviewerSub` | S | ○ | 運用者の Cognito の `sub` |
 | `action` | S | ○ | `start` / `release`（審査を戻した） / `approve` / `return` / `reject` |
 | `findings` | L | — | `[{ item: "2.2", detail }]`。審査基準の項目番号つき（channel-review-policy.md 3） |
-| `samplesKey` | S | — | AI に話させた見本（JSON）の保存場所。記録用のバケットの `reviews/{submissionId}/{at}.json` |
+| `samplesIds` | L | — | 判定に使った見本。見本は記録用のバケットの `reviews/{submissionId}/{samplesId}.json` |
+| `message` | S | — | 配信元への説明 |
 
 ### 取り下げ（REVOKE）
 
@@ -294,7 +305,8 @@ stateDiagram-v2
 | `publicReason` | S | ○ | リストの `publisherChange.reason` に載せる文 |
 | `state` | S | ○ | `requested` / `approved` / `rejected` / `cancelled` |
 | `verification` | M | — | 運用者が記録する本人確認（`method`・`detail`・`verifiedAt`） |
-| `returnedSubmissions` | L | — | 承認のときに差し戻した申請（古い鍵の署名） |
+| `returnedSubmissions` | L | — | 承認のときに差し戻した申請（古い鍵の署名。配信元のすべてのチャンネルから） |
+| `decisionReason` | S | — | 認めなかった理由 |
 
 ### 公開の記録（PUBLICATION）
 
@@ -305,7 +317,7 @@ stateDiagram-v2
 | `sha256`・`size` | S・N | ○ | リスト本体の `payload` のバイト列（要約に書いた値） |
 | `keyId` | S | ○ | 要約に署名した署名鍵 |
 | `archiveKey` | S | ○ | 記録用のバケットの `published/{seq}.json` |
-| `trigger` | S | ○ | `approve` / `revoke` / `transfer` / `keyset` / `daily` |
+| `trigger` | S | ○ | `approve` / `revoke` / `transfer` / `keyset` / `daily` / `manual` |
 | `channelCount`・`revokedCount` | N | ○ | 載せた件数 |
 
 先頭（`HEAD`）は最新の 1 件と同じ属性を持つ。公開の Lambda は `seq = :前に読んだ値` を条件に `HEAD` を書き換え、同じトランザクションで履歴を足す。
@@ -315,7 +327,7 @@ stateDiagram-v2
 | 種類 | 主な属性 |
 |---|---|
 | 鍵セット（先頭・履歴） | `seq`、`document`（ルート鍵が署名した文書をそのまま）、`registeredBy`、`verifiedAt` |
-| 署名鍵 | `keyId`（例: `k-2026-10`）、`kmsKeyArn`、`publicKey`、`notBefore`、`notAfter`、`status`（`active` / `retiring` / `revoked`）。公開の Lambda は、鍵セットに載っていて期間内の `active` の鍵を使う |
+| 署名鍵 | `keyId`（例: `k-2026-10`）、`kmsKeyArn`、`publicKey`、`notBefore`、`notAfter`、`status`（`registered`（登録したが鍵セットに載っていない） / `active` / `retiring` / `revoked`）。公開の Lambda は、鍵セットに載っていて期間内の `active` の鍵を使う |
 
 ### 試用チケット（TICKET）
 
@@ -336,7 +348,7 @@ stateDiagram-v2
 | `eventId` | S | ○ | ULID |
 | `at` | S | ○ | 日時 |
 | `actorSub`・`actorRole` | S | ○ | だれが（`publisher` / `operator` / `system`） |
-| `action` | S | ○ | 例: `publisher.register`・`key.bind`・`submission.create`・`submission.approve`・`channel.revoke`・`transfer.approve`・`keyset.register`・`publication.publish`・`publisher.suspend`・`limits.update` |
+| `action` | S | ○ | 例: `publisher.register`・`key.bind`・`submission.create`・`submission.approve`・`channel.revoke`・`transfer.approve`・`keyset.register`・`publication.publish`・`publisher.suspend`・`publisher.delete`・`limits.update`・`notification.sent`・`notification.failed`（`detail` に出来事と SES のメッセージ ID。メールアドレスは入れない） |
 | `target` | S | ○ | 例: `CH#kamakura-history`・`PUB#01J…` |
 | `reason` | S | — | 理由（運用者の操作では必須） |
 | `detail` | M | — | 前後の値など。秘密（API キー、トークン）は入れない |
@@ -357,7 +369,8 @@ DynamoDB なので DDL はなく、テーブルとインデックスは CDK（`i
 | 申請の開始 | 1 日の数（`uploads < 上限`）、チャンネル（`pendingSubmissionId` がないこと）、申請（`uploading`） |
 | 承認 | 申請（`in_review` → `approved`）、前の承認済みの申請（→ `superseded`）、チャンネル（`latestApproved`・`LISTED`、`pendingSubmissionId` を消す、`status` を `active` に）、審査の記録 |
 | 取り下げ | 取り下げ、チャンネル（`revoked`、`LISTED` を外す）、承認済みの申請（→ `revoked`） |
-| 移し替えの承認 | 移し替え（`requested` → `approved`）、チャンネル（`publisherChange`、審査待ちの申請を外す）、審査待ちの申請（→ `returned`）、古い鍵（`unboundAt`） |
+| 移し替えの承認 | 移し替え（`requested` → `approved`）、配信元（`activeAccountId`、`pendingTransferId` を消す）、新しい鍵（→ `active`）、古い鍵（→ `unbound`）、配信元のすべてのチャンネル（`publisherChange`、審査待ちの申請を外す）、審査待ちの申請（→ `returned`）。チャンネル 5 つと申請 5 つでも 20 件ほど |
+| 退会 | 配信元（→ `deleted`、表示名・連絡先を消す）、公開中のチャンネル（→ `revoked`）と取り下げ、承認済みの申請（→ `revoked`）、審査待ちの申請（→ `withdrawn`）、移し替えの申し出（→ `cancelled`）。Cognito のユーザーの削除はトランザクションの後 |
 
 - 承認・取り下げ・移し替えの承認・鍵セットの登録のあと、公開の Lambda を非同期で呼ぶ（ADR-001 A-10）
 - 1 つのトランザクションは 100 件まで。上の操作は多くても 10 件ほど
@@ -371,7 +384,8 @@ DynamoDB なので DDL はなく、テーブルとインデックスは CDK（`i
 | 公開用（CloudFront） | `.well-known/sanpo-channels`、`v1/channels.json` | 毎回上書き |
 | 公開用（CloudFront） | `pkg/{sha256}.zip`、`icons/{sha256}.png` | 消さない（取り下げても、URL は残る。アプリはリストで止める） |
 | 公開用（CloudFront） | `trial/{sha256}.zip` | 7 日で消す |
-| 記録用（非公開） | `published/{seq}.json`、`keysets/{seq}.json`、`reviews/{submissionId}/{at}.json` | 消さない |
+| 記録用（非公開） | `published/{seq}.json`、`keysets/{seq}.json`、`samples/{submissionId}/prompts.json`（見本用のプロンプト）、`reviews/{submissionId}/{samplesId}.json`（見本） | 消さない |
+| 受付用（非公開） | `intake/{channelId}/{submissionId}.png`（アイコン） | パッケージと同じ |
 
 ## 移行・互換性メモ
 
@@ -427,4 +441,5 @@ DynamoDB なので DDL はなく、テーブルとインデックスは CDK（`i
 | 日付 | 版 | 変更内容 | 変更者 |
 |---|---|---|---|
 | 2026-10-03 | 0.1 | 草案（M-1〜M-4 は開発者の決定、M-5〜M-13 は提案） | Claude |
+| 2026-10-03 | 1.1 | 管理 API（API-001 1.0）に合わせて改訂: 鍵の移し替えを配信元ごとに（M-14）、配信元の鍵の状態、配信元の `deleted`（M-15）、申請のアイコン・説明・タグ・地域、見本用のプロンプトと見本の置き場所、公開の `manual`、署名鍵の `registered`、通知の操作の記録 | Claude（承認: 開発者） |
 | 2026-10-03 | 1.0 | M-5〜M-13 を承認。`revoked` に載せる期間を 7 日に変更（M-9）。取り下げたチャンネルも上限に数える。未決事項 No.1・No.2 を解消 | Claude（承認: 開発者） |

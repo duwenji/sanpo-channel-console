@@ -1,0 +1,1448 @@
+openapi: 3.1.0
+info:
+  title: SanpoGuide チャンネル管理システム 管理 API
+  version: 1.0.0
+  summary: 配信元と運用者が SPA から使う API（sanpo-channel-console API-001）
+  description: |
+    [console-api.md](../console-api.md)（API-001 1.0）を機械で読める形にしたもの。
+    方針・状態・権限の根拠は契約書が正本で、食い違いがあれば契約書に合わせてこのファイルを直す。
+
+    - 利用者は同じリポジトリの SPA だけ。SPA と同じ CloudFront の `/api/*` で提供する
+    - 認証は Cognito のアクセストークン。`/api/admin/*` は `operator` のグループだけ
+    - 状態が変わるものは `ETag`（`rev`）を返し、変える操作は `If-Match` が必須
+    - 日時は UTC の ISO 8601、バイナリは base64url（パディングなし）
+    - 知らない項目は無視する（`additionalProperties` は許可）
+servers:
+  - url: '{baseUrl}'
+    description: SPA と同じオリジン
+    variables:
+      baseUrl:
+        default: https://console.example.com
+security:
+  - cognito: []
+tags:
+  - name: me
+    description: ログインしているユーザー
+  - name: publisher
+    description: 配信元（登録・鍵・移し替え・退会）
+  - name: channels
+    description: チャンネルと申請
+  - name: review
+    description: 審査（運用者）
+  - name: admin-publishers
+    description: 配信元の管理（運用者）
+  - name: keys
+    description: 署名鍵・鍵セット（運用者）
+  - name: publications
+    description: 公開と操作の記録（運用者）
+
+paths:
+  /api/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: ログインしているユーザー・役割・配信元
+      responses:
+        '200':
+          description: ユーザー
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/publisher:
+    post:
+      tags: [publisher]
+      operationId: registerPublisher
+      summary: 配信元として登録（pending_key）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublisherInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+    get:
+      tags: [publisher]
+      operationId: getMyPublisher
+      summary: 自分の配信元
+      responses:
+        '200': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [publisher]
+      operationId: updateMyPublisher
+      summary: 表示名・連絡先の変更
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PublisherPatch' }
+      responses:
+        '200': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [publisher]
+      operationId: deleteMyPublisher
+      summary: 退会（公開中のチャンネルはすべて取り下げる）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm: { type: string, description: 自分の publisherId（打ち間違い防止） }
+      responses:
+        '204': { description: 退会した }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/publisher/keys/challenge:
+    post:
+      tags: [publisher]
+      operationId: createKeyChallenge
+      summary: 鍵の紐づけ用の一度きりの文字列（10 分）
+      responses:
+        '201':
+          description: 一度きりの文字列
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeyChallenge' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/publisher/keys:
+    get:
+      tags: [publisher]
+      operationId: listMyKeys
+      summary: 鍵の一覧（今のものと過去のもの）
+      responses:
+        '200':
+          description: 鍵
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/PublisherKey' } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [publisher]
+      operationId: bindFirstKey
+      summary: 最初の鍵を紐づける
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KeyProof' }
+      responses:
+        '201':
+          description: 紐づけた鍵
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublisherKey' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/publisher/key-transfers:
+    get:
+      tags: [publisher]
+      operationId: listMyKeyTransfers
+      summary: 移し替えの申し出の一覧
+      responses:
+        '200':
+          description: 申し出
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/KeyTransfer' } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [publisher]
+      operationId: requestKeyTransfer
+      summary: 新しい鍵を紐づけて移し替えを申し出る
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KeyTransferInput' }
+      responses:
+        '201': { $ref: '#/components/responses/KeyTransfer' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/publisher/key-transfers/{transferId}/cancel:
+    parameters: [{ $ref: '#/components/parameters/TransferId' }]
+    post:
+      tags: [publisher]
+      operationId: cancelKeyTransfer
+      summary: 移し替えの申し出を取り消す
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      responses:
+        '200': { $ref: '#/components/responses/KeyTransfer' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/publisher/history:
+    get:
+      tags: [publisher]
+      operationId: listMyHistory
+      summary: 自分の配信元・チャンネルの経緯
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/AuditPage' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/channels:
+    get:
+      tags: [channels]
+      operationId: listMyChannels
+      summary: 自分のチャンネルの一覧
+      responses:
+        '200': { $ref: '#/components/responses/ChannelList' }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [channels]
+      operationId: registerChannel
+      summary: チャンネル ID を登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channelId]
+              properties:
+                channelId: { $ref: '#/components/schemas/ChannelId' }
+      responses:
+        '201': { $ref: '#/components/responses/Channel' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/channels/{channelId}:
+    parameters: [{ $ref: '#/components/parameters/ChannelId' }]
+    get:
+      tags: [channels]
+      operationId: getChannel
+      summary: チャンネル（配信元は自分のもの、運用者はすべて）
+      responses:
+        '200': { $ref: '#/components/responses/Channel' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/channels/{channelId}/submissions:
+    parameters: [{ $ref: '#/components/parameters/ChannelId' }]
+    get:
+      tags: [channels]
+      operationId: listSubmissions
+      summary: 申請の一覧（新しい順）
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: 申請
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Submission' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [channels]
+      operationId: createSubmission
+      summary: 申請を作り、アップロード先を受け取る
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmissionInput' }
+      responses:
+        '201':
+          description: 申請とアップロード先
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionCreated' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/channels/{channelId}/submissions/{submissionId}:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    get:
+      tags: [channels]
+      operationId: getSubmission
+      summary: 申請（機械審査の結果、判定と理由）
+      responses:
+        '200': { $ref: '#/components/responses/Submission' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/channels/{channelId}/submissions/{submissionId}/withdraw:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [channels]
+      operationId: withdrawSubmission
+      summary: 申請を取り消す（awaiting_review・in_review のとき）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      responses:
+        '200': { $ref: '#/components/responses/Submission' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/channels/{channelId}/submissions/{submissionId}/test-tickets:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    get:
+      tags: [channels]
+      operationId: listTestTickets
+      summary: 試用チケットの一覧
+      responses:
+        '200':
+          description: 試用チケット
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TestTicket' } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [channels]
+      operationId: issueTestTicket
+      summary: 試用チケットを発行（7 日）
+      responses:
+        '201':
+          description: 試用チケット
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestTicket' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/review-queue:
+    get:
+      tags: [review]
+      operationId: listReviewQueue
+      summary: 審査待ち（awaiting_review・in_review、古い順）
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: 審査待ちの申請
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Submission' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/package:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    get:
+      tags: [review]
+      operationId: getSubmissionPackage
+      summary: パッケージ・アイコンの取得先（署名付き URL、5 分）
+      responses:
+        '200':
+          description: 取得先
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [packageUrl, iconUrl, expiresAt]
+                properties:
+                  packageUrl: { type: string, format: uri }
+                  iconUrl: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/sample-prompts:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    get:
+      tags: [review]
+      operationId: getSamplePrompts
+      summary: 見本用のプロンプト（station-format が組み立てたもの）
+      responses:
+        '200':
+          description: 場面ごとのプロンプト
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SamplePrompts' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/samples:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [review]
+      operationId: saveSamples
+      summary: AI に話させた見本を保存（AI の出力だけ。1MB まで）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SamplesInput' }
+      responses:
+        '201':
+          description: 保存した見本
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [samplesId]
+                properties:
+                  samplesId: { type: string }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/reviews:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    get:
+      tags: [review]
+      operationId: listReviews
+      summary: 審査の記録（見本を含む）
+      responses:
+        '200':
+          description: 審査の記録
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Review' } }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/start:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [review]
+      operationId: startReview
+      summary: 審査を始める（awaiting_review → in_review）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      responses:
+        '200': { $ref: '#/components/responses/Submission' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/release:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [review]
+      operationId: releaseReview
+      summary: 審査を戻す（in_review → awaiting_review）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      responses:
+        '200': { $ref: '#/components/responses/Submission' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/approve:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [review]
+      operationId: approveSubmission
+      summary: 承認（in_review → approved。リストを作り直す）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApproveInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Decision' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/return:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [review]
+      operationId: returnSubmission
+      summary: 差し戻し（in_review → returned）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FindingsInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Decision' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/submissions/{submissionId}/reject:
+    parameters:
+      - { $ref: '#/components/parameters/ChannelId' }
+      - { $ref: '#/components/parameters/SubmissionId' }
+    post:
+      tags: [review]
+      operationId: rejectSubmission
+      summary: 却下（in_review → rejected）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FindingsInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Decision' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/channels/{channelId}/revoke:
+    parameters: [{ $ref: '#/components/parameters/ChannelId' }]
+    post:
+      tags: [review]
+      operationId: revokeChannel
+      summary: 取り下げ（リストから消し、revoked に 7 日載せる）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RevokeInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Channel' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers:
+    get:
+      tags: [admin-publishers]
+      operationId: listPublishers
+      summary: 配信元の一覧（新しい順）
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PublisherStatus' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: 配信元
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Publisher' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}:
+    parameters: [{ $ref: '#/components/parameters/PublisherId' }]
+    get:
+      tags: [admin-publishers]
+      operationId: getPublisher
+      summary: 配信元
+      responses:
+        '200': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}/channels:
+    parameters: [{ $ref: '#/components/parameters/PublisherId' }]
+    get:
+      tags: [admin-publishers]
+      operationId: listPublisherChannels
+      summary: 配信元のチャンネル
+      responses:
+        '200': { $ref: '#/components/responses/ChannelList' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}/suspend:
+    parameters: [{ $ref: '#/components/parameters/PublisherId' }]
+    post:
+      tags: [admin-publishers]
+      operationId: suspendPublisher
+      summary: 配信元を停止（公開中のチャンネルはそのまま）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}/resume:
+    parameters: [{ $ref: '#/components/parameters/PublisherId' }]
+    post:
+      tags: [admin-publishers]
+      operationId: resumePublisher
+      summary: 停止を解く
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}/limits:
+    parameters: [{ $ref: '#/components/parameters/PublisherId' }]
+    put:
+      tags: [admin-publishers]
+      operationId: setPublisherLimits
+      summary: 上限を変える（省いた項目は既定値に戻る）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/LimitsOverride' }
+                - type: object
+                  required: [reason]
+                  properties:
+                    reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/Publisher' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/key-transfers:
+    get:
+      tags: [admin-publishers]
+      operationId: listKeyTransfers
+      summary: 移し替えの申し出（既定は requested、古い順）
+      parameters:
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/KeyTransferState' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: 申し出
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/KeyTransfer' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}/key-transfers/{transferId}/approve:
+    parameters:
+      - { $ref: '#/components/parameters/PublisherId' }
+      - { $ref: '#/components/parameters/TransferId' }
+    post:
+      tags: [admin-publishers]
+      operationId: approveKeyTransfer
+      summary: 移し替えを承認（審査待ちの申請は差し戻す。リストを作り直す）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verification]
+              properties:
+                verification: { $ref: '#/components/schemas/Verification' }
+      responses:
+        '200': { $ref: '#/components/responses/KeyTransfer' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publishers/{publisherId}/key-transfers/{transferId}/reject:
+    parameters:
+      - { $ref: '#/components/parameters/PublisherId' }
+      - { $ref: '#/components/parameters/TransferId' }
+    post:
+      tags: [admin-publishers]
+      operationId: rejectKeyTransfer
+      summary: 移し替えを認めない（新しい鍵は外す）
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonInput' }
+      responses:
+        '200': { $ref: '#/components/responses/KeyTransfer' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/signing-keys:
+    get:
+      tags: [keys]
+      operationId: listSigningKeys
+      summary: 署名鍵の一覧
+      responses:
+        '200':
+          description: 署名鍵
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/SigningKey' } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [keys]
+      operationId: registerSigningKey
+      summary: KMS の鍵を署名鍵として登録（公開鍵は KMS から取得する）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId, kmsKeyArn]
+              properties:
+                keyId: { type: string, pattern: '^k-[0-9]{4}-[0-9]{2}$' }
+                kmsKeyArn: { type: string }
+      responses:
+        '201':
+          description: 署名鍵
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SigningKey' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/keysets:
+    get:
+      tags: [keys]
+      operationId: listKeysets
+      summary: 鍵セットの履歴（新しい順）
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: 鍵セット
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Keyset' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [keys]
+      operationId: registerKeyset
+      summary: ルート鍵が署名した鍵セットを登録（リストを作り直す）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document: { $ref: '#/components/schemas/SignedDocument' }
+      responses:
+        '201':
+          description: 鍵セット
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Keyset' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/publications:
+    get:
+      tags: [publications]
+      operationId: listPublications
+      summary: 公開の履歴（新しい順）
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: 公開の記録
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Publication' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      tags: [publications]
+      operationId: republish
+      summary: 今すぐ作り直して公開する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonInput' }
+      responses:
+        '202': { description: 公開の Lambda を呼んだ }
+        default: { $ref: '#/components/responses/Error' }
+
+  /api/admin/audit:
+    get:
+      tags: [publications]
+      operationId: listAudit
+      summary: 操作の記録（month と target のどちらか 1 つ）
+      parameters:
+        - name: month
+          in: query
+          schema: { type: string, pattern: '^[0-9]{4}-[0-9]{2}$' }
+        - name: target
+          in: query
+          description: 例 `CH#kamakura-history`、`PUB#01J…`
+          schema: { type: string }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/AuditPage' }
+        default: { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    cognito:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito のアクセストークン。`cognito:groups` に `publisher` / `operator`
+
+  headers:
+    ETag:
+      description: '`"{rev}"`。変える操作の `If-Match` に送る'
+      schema: { type: string }
+
+  parameters:
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: 取得したときの `ETag`。ないと 428、違うと 412
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    ChannelId:
+      name: channelId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/ChannelId' }
+    SubmissionId:
+      name: submissionId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Ulid' }
+    PublisherId:
+      name: publisherId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Ulid' }
+    TransferId:
+      name: transferId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Ulid' }
+
+  responses:
+    Error:
+      description: エラー（RFC 9457）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Publisher:
+      description: 配信元
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Publisher' }
+    Channel:
+      description: チャンネル
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Channel' }
+    ChannelList:
+      description: チャンネルの一覧
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items]
+            properties:
+              items: { type: array, items: { $ref: '#/components/schemas/Channel' } }
+    Submission:
+      description: 申請
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Submission' }
+    Decision:
+      description: 判定後の申請と公開の状況
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [submission, publication]
+            properties:
+              submission: { $ref: '#/components/schemas/Submission' }
+              publication:
+                type: string
+                enum: [pending, none]
+                description: approve は pending（公開の Lambda を呼んだ）、return・reject は none
+    KeyTransfer:
+      description: 鍵の移し替え
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/KeyTransfer' }
+    AuditPage:
+      description: 操作の記録（新しい順）
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items]
+            properties:
+              items: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+              nextCursor: { type: [string, 'null'] }
+
+  schemas:
+    Ulid:
+      type: string
+      pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+    ChannelId:
+      type: string
+      pattern: '^[a-z0-9-]{3,40}$'
+    AccountId:
+      type: string
+      pattern: '^sg1[a-z2-7]{32}$'
+    Base64Url:
+      type: string
+      pattern: '^[A-Za-z0-9_-]+$'
+    Rev:
+      type: integer
+      minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, default: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, description: 問い合わせ用の要求 ID }
+        code:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_signature
+            - challenge_invalid
+            - keyset_invalid
+            - unauthorized
+            - forbidden
+            - publisher_not_active
+            - not_found
+            - already_registered
+            - channel_id_taken
+            - account_id_taken
+            - key_already_bound
+            - transfer_pending
+            - limit_reached
+            - pending_submission_exists
+            - invalid_state
+            - version_not_newer
+            - precondition_failed
+            - precondition_required
+            - payload_too_large
+            - quota_exceeded
+            - throttled
+            - internal
+        errors:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path: { type: string, description: JSON Pointer }
+              message: { type: string }
+
+    Me:
+      type: object
+      required: [sub, roles]
+      properties:
+        sub: { type: string }
+        roles:
+          type: array
+          items: { type: string, enum: [publisher, operator] }
+        publisher:
+          oneOf:
+            - { $ref: '#/components/schemas/Publisher' }
+            - { type: 'null' }
+
+    PublisherStatus:
+      type: string
+      enum: [pending_key, active, suspended, deleted]
+    PublisherInput:
+      type: object
+      required: [displayName, contact]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 40 }
+        contact: { type: string, minLength: 1, maxLength: 200, description: 審査・移し替えの連絡先 }
+    PublisherPatch:
+      type: object
+      minProperties: 1
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 40 }
+        contact: { type: string, minLength: 1, maxLength: 200 }
+    Limits:
+      type: object
+      required: [channels, uploadsPerDay, ticketsPerDay]
+      properties:
+        channels: { type: integer, minimum: 0, default: 5 }
+        uploadsPerDay: { type: integer, minimum: 0, default: 20 }
+        ticketsPerDay: { type: integer, minimum: 0, default: 10 }
+    LimitsOverride:
+      type: object
+      properties:
+        channels: { type: integer, minimum: 0 }
+        uploadsPerDay: { type: integer, minimum: 0 }
+        ticketsPerDay: { type: integer, minimum: 0 }
+    Usage:
+      type: object
+      required: [channels, uploadsToday, ticketsToday]
+      properties:
+        channels: { type: integer }
+        uploadsToday: { type: integer }
+        ticketsToday: { type: integer }
+    Publisher:
+      type: object
+      required: [publisherId, displayName, status, limits, usage, rev, createdAt, updatedAt]
+      properties:
+        publisherId: { $ref: '#/components/schemas/Ulid' }
+        displayName: { type: string }
+        contact: { type: string, description: 本人と運用者だけに返す }
+        status: { $ref: '#/components/schemas/PublisherStatus' }
+        statusReason: { type: string }
+        activeAccountId:
+          oneOf:
+            - { $ref: '#/components/schemas/AccountId' }
+            - { type: 'null' }
+        limits: { $ref: '#/components/schemas/Limits' }
+        usage: { $ref: '#/components/schemas/Usage' }
+        rev: { $ref: '#/components/schemas/Rev' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    KeyChallenge:
+      type: object
+      required: [nonce, message, expiresAt]
+      properties:
+        nonce: { $ref: '#/components/schemas/Ulid' }
+        message: { type: string, description: 'これの UTF-8 に Ed25519 で署名する' }
+        expiresAt: { type: string, format: date-time }
+    KeyProof:
+      type: object
+      required: [nonce, publicKey, signature]
+      properties:
+        nonce: { $ref: '#/components/schemas/Ulid' }
+        publicKey: { $ref: '#/components/schemas/Base64Url' }
+        signature: { $ref: '#/components/schemas/Base64Url' }
+    PublisherKey:
+      type: object
+      required: [accountId, publicKey, status, boundAt]
+      properties:
+        accountId: { $ref: '#/components/schemas/AccountId' }
+        publicKey: { $ref: '#/components/schemas/Base64Url' }
+        status: { type: string, enum: [active, pending_transfer, unbound] }
+        boundAt: { type: string, format: date-time }
+        unboundAt: { type: string, format: date-time }
+        unboundReason: { type: string }
+
+    KeyTransferState:
+      type: string
+      enum: [requested, approved, rejected, cancelled]
+    KeyTransferInput:
+      allOf:
+        - { $ref: '#/components/schemas/KeyProof' }
+        - type: object
+          required: [reason, publicReason]
+          properties:
+            reason: { type: string, enum: [lost, leaked, other] }
+            publicReason: { type: string, minLength: 1, maxLength: 60 }
+            note: { type: string, maxLength: 2000 }
+    Verification:
+      type: object
+      required: [method, detail]
+      properties:
+        method: { type: string, minLength: 1, maxLength: 100, description: 例 登録済みの連絡先への返信 }
+        detail: { type: string, minLength: 1, maxLength: 2000 }
+    KeyTransfer:
+      type: object
+      required: [transferId, publisherId, fromAccountId, toAccountId, reason, publicReason, state, rev, requestedAt]
+      properties:
+        transferId: { $ref: '#/components/schemas/Ulid' }
+        publisherId: { $ref: '#/components/schemas/Ulid' }
+        fromAccountId: { $ref: '#/components/schemas/AccountId' }
+        toAccountId: { $ref: '#/components/schemas/AccountId' }
+        reason: { type: string, enum: [lost, leaked, other] }
+        publicReason: { type: string }
+        note: { type: string }
+        state: { $ref: '#/components/schemas/KeyTransferState' }
+        verification: { $ref: '#/components/schemas/Verification' }
+        decisionReason: { type: string }
+        returnedSubmissions:
+          type: array
+          items: { $ref: '#/components/schemas/Ulid' }
+        rev: { $ref: '#/components/schemas/Rev' }
+        requestedAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time }
+
+    ListedPackage:
+      type: object
+      required: [url, sha256, size, format]
+      properties:
+        url: { type: string, format: uri }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        size: { type: integer }
+        format: { type: integer }
+    LatestApproved:
+      type: object
+      description: リストの channels[] の 1 件になる内容（DM-001 M-8）
+      required: [submissionId, version, publisher, name, summary, lang, icon, package, minAppVersion, approvedAt]
+      properties:
+        submissionId: { $ref: '#/components/schemas/Ulid' }
+        version: { type: integer, minimum: 1 }
+        publisher: { $ref: '#/components/schemas/AccountId' }
+        name: { type: string }
+        summary: { type: string }
+        description: { type: string }
+        lang: { type: array, items: { type: string } }
+        tags: { type: array, items: { type: string } }
+        regions: { type: array, items: { type: string } }
+        icon:
+          type: object
+          required: [url, sha256]
+          properties:
+            url: { type: string, format: uri }
+            sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        package: { $ref: '#/components/schemas/ListedPackage' }
+        minAppVersion: { type: integer }
+        approvedAt: { type: string, format: date-time }
+    Channel:
+      type: object
+      required: [channelId, publisherId, status, rev, createdAt, updatedAt]
+      properties:
+        channelId: { $ref: '#/components/schemas/ChannelId' }
+        publisherId: { $ref: '#/components/schemas/Ulid' }
+        status: { type: string, enum: [active, revoked] }
+        pendingSubmissionId:
+          oneOf:
+            - { $ref: '#/components/schemas/Ulid' }
+            - { type: 'null' }
+        latestApproved:
+          oneOf:
+            - { $ref: '#/components/schemas/LatestApproved' }
+            - { type: 'null' }
+        listed: { type: boolean, description: 今のリストに載っているか }
+        publisherChange:
+          type: [object, 'null']
+          properties:
+            from: { $ref: '#/components/schemas/AccountId' }
+            at: { type: string, format: date-time }
+            reason: { type: string }
+            until: { type: string, format: date-time }
+        revocations:
+          type: array
+          items:
+            type: object
+            required: [reason, severity, revokedAt]
+            properties:
+              versions: { type: array, items: { type: integer } }
+              reason: { type: string }
+              severity: { type: string, enum: [high, low] }
+              revokedAt: { type: string, format: date-time }
+        rev: { $ref: '#/components/schemas/Rev' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SubmissionState:
+      type: string
+      enum: [uploading, validating, validation_failed, awaiting_review, in_review, approved, returned, rejected, withdrawn, expired, superseded, revoked]
+    SubmissionInput:
+      type: object
+      properties:
+        description: { type: string, maxLength: 1000 }
+        tags:
+          type: array
+          maxItems: 8
+          items: { type: string, pattern: '^[a-z0-9-]{1,20}$' }
+        regions:
+          type: array
+          maxItems: 8
+          items: { type: string, pattern: '^[0-9b-hjkmnp-z]{1,8}$', description: geohash の接頭辞 }
+        note: { type: string, maxLength: 2000, description: 運用者への説明 }
+    Validation:
+      type: object
+      required: [ok, errors, checkedAt, validatorVersion]
+      properties:
+        ok: { type: boolean }
+        errors:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [code, detail]
+            properties:
+              code: { type: string, description: API-003 のエラーコード、または bad_icon・id_mismatch・publisher_mismatch・version_not_newer }
+              detail: { type: string }
+        appStage: { type: integer, description: 必要なアプリの段（API-003 確認の手順 10） }
+        checkedAt: { type: string, format: date-time }
+        validatorVersion: { type: string }
+    Finding:
+      type: object
+      required: [item, detail]
+      properties:
+        item: { type: string, pattern: '^[0-9]+(\.[0-9]+)*$', description: 審査基準の項目番号（例 2.2） }
+        detail: { type: string, minLength: 1, maxLength: 2000 }
+    Decision:
+      type: object
+      required: [action, at]
+      properties:
+        action: { type: string, enum: [approve, return, reject] }
+        findings: { type: array, items: { $ref: '#/components/schemas/Finding' } }
+        message: { type: string }
+        at: { type: string, format: date-time }
+    Submission:
+      type: object
+      required: [submissionId, channelId, accountId, state, rev, createdAt, updatedAt]
+      properties:
+        submissionId: { $ref: '#/components/schemas/Ulid' }
+        channelId: { $ref: '#/components/schemas/ChannelId' }
+        version: { type: [integer, 'null'], description: パッケージの channel.json から（機械審査の後） }
+        accountId: { $ref: '#/components/schemas/AccountId' }
+        state: { $ref: '#/components/schemas/SubmissionState' }
+        description: { type: string }
+        tags: { type: array, items: { type: string } }
+        regions: { type: array, items: { type: string } }
+        note: { type: string }
+        sha256: { type: [string, 'null'] }
+        size: { type: [integer, 'null'] }
+        validation:
+          oneOf:
+            - { $ref: '#/components/schemas/Validation' }
+            - { type: 'null' }
+        decision:
+          oneOf:
+            - { $ref: '#/components/schemas/Decision' }
+            - { type: 'null' }
+        submittedAt: { type: [string, 'null'], format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        rev: { $ref: '#/components/schemas/Rev' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PresignedPost:
+      type: object
+      required: [url, fields, maxBytes]
+      properties:
+        url: { type: string, format: uri }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+        maxBytes: { type: integer }
+    SubmissionCreated:
+      type: object
+      required: [submission, uploads, uploadExpiresAt]
+      properties:
+        submission: { $ref: '#/components/schemas/Submission' }
+        uploads:
+          type: object
+          required: [package, icon]
+          properties:
+            package: { $ref: '#/components/schemas/PresignedPost' }
+            icon: { $ref: '#/components/schemas/PresignedPost' }
+        uploadExpiresAt: { type: string, format: date-time }
+
+    SignedDocument:
+      type: object
+      required: [payload, keyId, sig]
+      properties:
+        payload: { $ref: '#/components/schemas/Base64Url' }
+        keyId: { type: string }
+        sig: { $ref: '#/components/schemas/Base64Url' }
+    TestTicket:
+      type: object
+      required: [submissionId, document, qr, issuedAt, expiresAt]
+      properties:
+        submissionId: { $ref: '#/components/schemas/Ulid' }
+        document: { $ref: '#/components/schemas/SignedDocument' }
+        qr: { type: string, description: QR コードにする文字列（API-002 の試用チケット） }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    SamplePrompts:
+      type: object
+      required: [generatedBy, scenarios]
+      properties:
+        generatedBy: { type: string, description: 組み立てた station-format の版 }
+        scenarios:
+          type: array
+          items:
+            type: object
+            required: [id, label, system, user]
+            properties:
+              id: { type: string }
+              label: { type: string }
+              system: { type: string }
+              user: { type: string }
+    SamplesInput:
+      type: object
+      required: [service, model, items]
+      properties:
+        service: { type: string, minLength: 1, maxLength: 40 }
+        model: { type: string, minLength: 1, maxLength: 100 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [scenarioId, output]
+            properties:
+              scenarioId: { type: string }
+              output: { type: string, maxLength: 20000 }
+    Review:
+      type: object
+      required: [reviewerSub, action, at]
+      properties:
+        reviewerSub: { type: string }
+        action: { type: string, enum: [start, release, approve, return, reject] }
+        findings: { type: array, items: { $ref: '#/components/schemas/Finding' } }
+        message: { type: string }
+        samples:
+          type: array
+          items:
+            type: object
+            required: [samplesId, service, model]
+            properties:
+              samplesId: { type: string }
+              service: { type: string }
+              model: { type: string }
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    scenarioId: { type: string }
+                    output: { type: string }
+        at: { type: string, format: date-time }
+    ApproveInput:
+      type: object
+      properties:
+        samplesIds: { type: array, items: { type: string } }
+        message: { type: string, maxLength: 2000 }
+    FindingsInput:
+      type: object
+      required: [findings]
+      properties:
+        findings:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Finding' }
+        message: { type: string, maxLength: 2000 }
+        samplesIds: { type: array, items: { type: string } }
+    RevokeInput:
+      type: object
+      required: [reason, severity]
+      properties:
+        versions:
+          type: array
+          items: { type: integer, minimum: 1 }
+          description: 省くとすべての版
+        reason: { type: string, minLength: 1, maxLength: 200, description: 利用者に見せる理由 }
+        severity: { type: string, enum: [high, low] }
+    ReasonInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+
+    SigningKey:
+      type: object
+      required: [keyId, kmsKeyArn, publicKey, status]
+      properties:
+        keyId: { type: string }
+        kmsKeyArn: { type: string }
+        publicKey: { $ref: '#/components/schemas/Base64Url' }
+        notBefore: { type: [string, 'null'], format: date-time, description: 鍵セットに載ってから決まる }
+        notAfter: { type: [string, 'null'], format: date-time }
+        status: { type: string, enum: [registered, active, retiring, revoked] }
+    Keyset:
+      type: object
+      required: [seq, document, registeredAt]
+      properties:
+        seq: { type: integer }
+        document: { $ref: '#/components/schemas/SignedDocument' }
+        keyIds: { type: array, items: { type: string } }
+        revokedKeyIds: { type: array, items: { type: string } }
+        registeredAt: { type: string, format: date-time }
+    Publication:
+      type: object
+      required: [seq, issuedAt, expiresAt, sha256, size, keyId, trigger, channelCount, revokedCount]
+      properties:
+        seq: { type: integer }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        sha256: { type: string }
+        size: { type: integer }
+        keyId: { type: string }
+        trigger: { type: string, enum: [approve, revoke, transfer, keyset, daily, manual] }
+        channelCount: { type: integer }
+        revokedCount: { type: integer }
+
+    AuditEvent:
+      type: object
+      required: [eventId, at, actorRole, action, target]
+      properties:
+        eventId: { $ref: '#/components/schemas/Ulid' }
+        at: { type: string, format: date-time }
+        actorSub: { type: string, description: 運用者にだけ返す }
+        actorRole: { type: string, enum: [publisher, operator, system] }
+        action: { type: string }
+        target: { type: string }
+        reason: { type: string }
+        detail: { type: object }
