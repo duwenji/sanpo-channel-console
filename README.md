@@ -56,4 +56,5 @@ cd infra && npx cdk synth -c env=dev -c rootPublicKey=<base64url>
 - [API-001](docs/console-api.md): 管理 API（[OpenAPI](docs/api/console.openapi.yaml)）
 - [DES-001](docs/design/DES-001-publisher.md): 公開の処理・ルート鍵の CLI・準拠テスト
 - [DES-002](docs/design/DES-002-operator-console.md): 運用者の画面
+- [費用](docs/operations/cost.md): 開発用は約 1.5 USD/月
 - [配備の手順](docs/operations/deploy.md): 開発用は配備済み（リスト https://d1vs7kc4zgmwrz.cloudfront.net、画面 https://d3gvjt5e1ced74.cloudfront.net）

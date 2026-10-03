@@ -119,4 +119,21 @@ describe('ConsoleStack', () => {
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
   });
+
+  it('keeps development cheap and production protected (docs/operations/cost.md)', () => {
+    const dev = template('dev');
+    dev.resourceCountIs('AWS::WAFv2::WebACL', 0);
+    dev.resourceCountIs('AWS::SecretsManager::Secret', 0);
+    dev.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({ CURSOR_KEY: Match.anyValue() }) } });
+    dev.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 14 });
+    dev.hasResourceProperties('AWS::DynamoDB::GlobalTable', { Replicas: [Match.objectLike({ PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: false } })] });
+    dev.hasResourceProperties('AWS::Budgets::Budget', {
+      Budget: Match.objectLike({ BudgetLimit: { Amount: 5, Unit: 'USD' }, CostFilters: { TagKeyValue: ['user:project$sanpo-channel-console'] } }),
+    });
+
+    prod.resourceCountIs('AWS::WAFv2::WebACL', 1);
+    prod.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    prod.resourceCountIs('AWS::Logs::LogGroup', 0);
+    prod.resourceCountIs('AWS::Budgets::Budget', 0);
+  });
 });

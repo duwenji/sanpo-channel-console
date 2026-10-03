@@ -55,12 +55,12 @@
 |---|---|---|
 | J-1 | `/api/{proxy+}` を 1 つの Lambda に送り、Lambda の中で振り分ける。JWT は API Gateway で確かめ、役割（`cognito:groups`）は Lambda で確かめる | ルートを増やしても API Gateway の設定が増えない |
 | J-2 | 状態を変える書き込みは、事前に読んで `If-Match` と状態を確かめ（412・409）、書き込みでも `rev` と状態を条件にし、操作の記録を同じトランザクションに入れる | API-001 C-8、DM-001 M-11・DV-10 |
-| J-3 | 一覧の続きの位置は AES-256-GCM で暗号化（鍵は Secrets Manager の乱数の SHA-256） | API-001 C-9 |
+| J-3 | 一覧の続きの位置は AES-256-GCM で暗号化（本番の鍵は Secrets Manager の乱数の SHA-256。開発用は合成のときの乱数を環境変数で） | API-001 C-9 |
 | J-4 | 鍵セットを登録すると、載った鍵は `active`、`revokedKeys` の鍵は `revoked`、載らなくなった `active` の鍵は `retiring` にし、公開の Lambda を呼ぶ | ADR-001 A-8・A-9 |
 | J-5 | 取り下げはチャンネルをリストから外し（`LISTED` を消す）、承認済みの申請を `revoked` にし、公開の Lambda を呼ぶ。`versions` を指定してもチャンネルはリストから外れる | DM-001 M-9 |
 | J-6 | SPA は `config.json` を起動時に読む（配備時に CDK が書く）。トークンは `sessionStorage`。ログアウトは Cognito の `/logout` | 1 回のビルドを両方の環境で使う。localStorage を避ける |
 | J-7 | SPA の CSP は自分と Cognito だけを許す。HSTS・`X-Frame-Options: DENY`・nosniff・`Referrer-Policy: no-referrer` | 乗っ取られたスクリプトでトークンを持ち出させない |
-| J-8 | WAF をユーザープールに付ける（IP ごとに 5 分 300 回、AWS の IP 評判リスト）。API Gateway のステージは毎秒 20・バースト 40 | ADR-001 A-18（HTTP API には WAF を付けられない） |
+| J-8 | 本番は WAF をユーザープールに付ける（IP ごとに 5 分 300 回、AWS の IP 評判リスト）。開発用は付けない（[費用](../operations/cost.md)）。API Gateway のステージは毎秒 20・バースト 40 | ADR-001 A-18（HTTP API には WAF を付けられない） |
 | J-9 | post-confirmation トリガーは、自分で登録した人（`PostConfirmation_ConfirmSignUp`）だけを `publisher` に入れる | 運用者は管理者だけが作る |
 
 ## 検証結果
@@ -81,7 +81,7 @@
 | 1 | SPA のソースマップを公開用のバケットに置いている（ソースが読める） | 秘密は含まない。気になるなら本番で外す |
 | 2 | 配信元向けの API（`/api/publisher/*`、配信元のチャンネル・申請）と審査の操作は未実装 | 実装の順番 3 |
 | 3 | Cognito の確認コードのメールは Cognito の既定の送信（1 日の上限が小さい） | 本番は SES（ADR-001 A-19 と同じ送信元）にする |
-| 4 | WAF の費用（Web ACL 月 5 USD + ルール） | 開発用でも付けている。不要なら開発用だけ外す |
+| 4 | ~~WAF の費用（Web ACL 月 5 USD + ルール）~~ → 開発用では外した（2026-10-04、[費用](../operations/cost.md)）。本番は付ける | — |
 
 ## 関連ドキュメント・参照リンク
 
@@ -93,3 +93,4 @@
 | 日付 | 版 | 変更内容 | 変更者 |
 |---|---|---|---|
 | 2026-10-04 | 1.0 | 作成 | Claude |
+| 2026-10-04 | 1.1 | 開発用の費用を下げた（WAF・シークレット・PITR をやめ、ログを 14 日に、予算の通知とタグ） | Claude |

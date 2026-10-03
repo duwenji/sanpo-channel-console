@@ -18,14 +18,20 @@ const kms = new KMSClient({});
 const lambda = new LambdaClient({});
 let deps: Deps | undefined;
 
-async function load(): Promise<Deps> {
+/** The cursor key: from $CURSOR_KEY (development) or a Secrets Manager secret (production). */
+async function cursorKey(): Promise<Buffer> {
+  if (process.env.CURSOR_KEY) return Buffer.from(process.env.CURSOR_KEY, 'base64url');
   const secret = await new SecretsManagerClient({}).send(new GetSecretValueCommand({ SecretId: env('CURSOR_SECRET_ARN') }));
+  // The secret is random text; its SHA-256 is the 32-byte AES key.
+  return createHash('sha256').update(secret.SecretString ?? '').digest();
+}
+
+async function load(): Promise<Deps> {
   return {
     db: DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } }),
     table: env('TABLE_NAME'),
     now: () => new Date(),
-    // The secret is random text; its SHA-256 is the 32-byte AES key.
-    cursors: new CursorCodec(createHash('sha256').update(secret.SecretString ?? '').digest()),
+    cursors: new CursorCodec(await cursorKey()),
     rootPublicKey: env('ROOT_PUBLIC_KEY'),
     kmsPublicKey: async (keyArn) => {
       const out = await kms.send(new GetPublicKeyCommand({ KeyId: keyArn }));

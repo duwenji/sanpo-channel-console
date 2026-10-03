@@ -16,7 +16,9 @@ import * as secrets from 'aws-cdk-lib/aws-secretsmanager';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { Construct } from 'constructs';
 import { existsSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import type { EnvConfig } from './config.js';
+import { logGroupFor } from './common.js';
 
 export interface ConsoleAppProps {
   config: EnvConfig;
@@ -76,6 +78,7 @@ export class ConsoleApp extends Construct {
     // Everyone who signs up is a publisher; operators are never made this way.
     const postConfirmation = new nodejs.NodejsFunction(this, 'PostConfirmation', {
       ...lambdaDefaults(repoRoot),
+      ...logGroupFor(this, 'PostConfirmationLogs', config),
       entry: `${repoRoot}api/src/console/post-confirmation.ts`,
       memorySize: 256,
       timeout: Duration.seconds(10),
@@ -94,7 +97,8 @@ export class ConsoleApp extends Construct {
       managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
 
-    // A-18: limit sign-up and sign-in attempts per source address.
+    // A-18: limit sign-up and sign-in attempts per source address (production; about 7 USD a month).
+    if (config.cost.waf) {
     const waf = new wafv2.CfnWebACL(this, 'UserPoolWaf', {
       scope: 'REGIONAL',
       defaultAction: { allow: {} },
@@ -117,6 +121,7 @@ export class ConsoleApp extends Construct {
       ],
     });
     new wafv2.CfnWebACLAssociation(this, 'UserPoolWafAssociation', { resourceArn: userPool.userPoolArn, webAclArn: waf.attrArn });
+    }
 
     // ---- the SPA's distribution, also fronting the API (API-001 C-5) ----
     const webBucket = new s3.Bucket(this, 'WebBucket', {
@@ -129,15 +134,20 @@ export class ConsoleApp extends Construct {
 
     const consoleFn = new nodejs.NodejsFunction(this, 'ConsoleApi', {
       ...lambdaDefaults(repoRoot),
+      ...logGroupFor(this, 'ConsoleApiLogs', config),
       entry: `${repoRoot}api/src/console/handler.ts`,
       memorySize: 512,
       timeout: Duration.seconds(15),
     });
-    const cursorSecret = new secrets.Secret(this, 'CursorSecret', {
-      description: 'Key material for opaque list cursors (API-001 C-9)',
-      generateSecretString: { passwordLength: 64, excludePunctuation: true },
-      removalPolicy: RemovalPolicy.DESTROY,
-    });
+    // API-001 C-9. Development passes a key made at synthesis instead of paying for a secret.
+    const cursorSecret =
+      config.cost.cursorKey === 'secret'
+        ? new secrets.Secret(this, 'CursorSecret', {
+            description: 'Key material for opaque list cursors (API-001 C-9)',
+            generateSecretString: { passwordLength: 64, excludePunctuation: true },
+            removalPolicy: RemovalPolicy.DESTROY,
+          })
+        : undefined;
 
     const httpApi = new apigw.HttpApi(this, 'HttpApi', { apiName: `sanpo-channel-console-${config.name}`, createDefaultStage: true });
     const stage = httpApi.defaultStage?.node.defaultChild as apigw.CfnStage;
@@ -239,11 +249,15 @@ export class ConsoleApp extends Construct {
     consoleFn.addEnvironment('TABLE_NAME', props.table.tableName);
     consoleFn.addEnvironment('PUBLISH_FUNCTION', props.publisher.functionName);
     consoleFn.addEnvironment('ROOT_PUBLIC_KEY', config.rootPublicKey);
-    consoleFn.addEnvironment('CURSOR_SECRET_ARN', cursorSecret.secretArn);
+    if (cursorSecret) {
+      consoleFn.addEnvironment('CURSOR_SECRET_ARN', cursorSecret.secretArn);
+      cursorSecret.grantRead(consoleFn);
+    } else {
+      consoleFn.addEnvironment('CURSOR_KEY', randomBytes(32).toString('base64url'));
+    }
     consoleFn.addEnvironment('NODE_OPTIONS', '--enable-source-maps');
     props.table.grantReadWriteData(consoleFn);
     props.publisher.grantInvoke(consoleFn);
-    cursorSecret.grantRead(consoleFn);
     for (const key of props.signingKeys) key.grant(consoleFn, 'kms:GetPublicKey', 'kms:DescribeKey');
     // Registering a signing key reads any KMS key the operator names, in this account only.
     consoleFn.addToRolePolicy(
