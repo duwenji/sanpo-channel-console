@@ -1,14 +1,22 @@
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { configs } from '../lib/config.js';
 import { ConsoleStack } from '../lib/console-stack.js';
+
+// A stand-in for web/dist, so the tests don't need the SPA built.
+const webDist = mkdtempSync(join(tmpdir(), 'web-dist-'));
+writeFileSync(join(webDist, 'index.html'), '<!doctype html>');
 
 function template(name: 'dev' | 'prod') {
   // Skip bundling the Lambda code; tests look at the resources, not the bundle.
   const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
   const stack = new ConsoleStack(app, `Test-${name}`, {
     config: { ...configs[name], rootPublicKey: 'A'.repeat(43) },
+    webDist,
     env: { region: 'ap-northeast-1', account: '123456789012' },
   });
   return Template.fromStack(stack);
@@ -47,14 +55,14 @@ describe('ConsoleStack', () => {
   });
 
   it('keeps the public bucket private behind CloudFront with HTTPS only', () => {
-    prod.resourceCountIs('AWS::S3::Bucket', 2);
+    prod.resourceCountIs('AWS::S3::Bucket', 3);
     prod.hasResourceProperties('AWS::S3::Bucket', {
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true },
     });
     prod.hasResourceProperties('AWS::CloudFront::Distribution', {
       DistributionConfig: Match.objectLike({ DefaultCacheBehavior: Match.objectLike({ ViewerProtocolPolicy: 'https-only' }) }),
     });
-    prod.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
+    prod.resourceCountIs('AWS::CloudFront::OriginAccessControl', 2);
   });
 
   it('runs one publisher at a time, daily, with alarms', () => {
@@ -75,5 +83,40 @@ describe('ConsoleStack', () => {
     const dev = template('dev');
     dev.hasResource('AWS::S3::Bucket', { DeletionPolicy: 'Delete' });
     dev.hasResource('AWS::KMS::Key', { DeletionPolicy: 'Retain' });
+  });
+
+  it('requires TOTP MFA from everyone and lets only sign-ups become publishers (ADR-001 A-4 1.2)', () => {
+    prod.hasResourceProperties('AWS::Cognito::UserPool', {
+      MfaConfiguration: 'ON',
+      EnabledMfas: ['SOFTWARE_TOKEN_MFA'],
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: false },
+      Policies: { PasswordPolicy: Match.objectLike({ MinimumLength: 12 }) },
+      LambdaConfig: { PostConfirmation: Match.anyValue() },
+    });
+    prod.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'operator' });
+    prod.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'publisher' });
+    prod.hasResourceProperties('AWS::Cognito::UserPoolDomain', { ManagedLoginVersion: 2 });
+    prod.resourceCountIs('AWS::Cognito::ManagedLoginBranding', 1);
+    prod.hasResourceProperties('AWS::WAFv2::WebACLAssociation', { ResourceArn: Match.anyValue() });
+  });
+
+  it('gives the SPA a public client: code flow, no secret, no localhost in production', () => {
+    prod.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      GenerateSecret: false,
+      AllowedOAuthFlows: ['code'],
+      EnableTokenRevocation: true,
+      CallbackURLs: Match.arrayWith([Match.objectLike({ 'Fn::Join': Match.anyValue() })]),
+    });
+    expect(JSON.stringify(prod.findResources('AWS::Cognito::UserPoolClient'))).not.toContain('localhost');
+    expect(JSON.stringify(template('dev').findResources('AWS::Cognito::UserPoolClient'))).toContain('http://localhost:5173/callback');
+  });
+
+  it('puts the API behind the JWT authorizer, throttled, and the SPA behind a strict CSP', () => {
+    prod.hasResourceProperties('AWS::ApiGatewayV2::Authorizer', { AuthorizerType: 'JWT', IdentitySource: ['$request.header.Authorization'] });
+    prod.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey: 'ANY /api/{proxy+}', AuthorizationType: 'JWT' });
+    prod.hasResourceProperties('AWS::ApiGatewayV2::Stage', { DefaultRouteSettings: { ThrottlingRateLimit: 20, ThrottlingBurstLimit: 40 } });
+    const csp = JSON.stringify(prod.findResources('AWS::CloudFront::ResponseHeadersPolicy'));
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
   });
 });

@@ -11,6 +11,14 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # The console API tests need conditions, transactions and GSIs (api/test/dynamo-local.ts).
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+    env:
+      DYNAMODB_ENDPOINT: http://localhost:8000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +30,8 @@ jobs:
         run: npx tsc -b
       - name: Test
         run: npx vitest run
+      - name: Build the SPA
+        run: npm run build -w web
       - name: Synthesize (throwaway root key)
         working-directory: infra
         run: |

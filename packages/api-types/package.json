@@ -1,0 +1,12 @@
+{
+  "name": "@sanpo-console/api-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Types generated from docs/api/console.openapi.yaml (API-001); regenerate with npm run generate",
+  "exports": { ".": { "types": "./src/index.ts", "default": "./src/index.ts" } },
+  "scripts": {
+    "generate": "openapi-typescript ../../docs/api/console.openapi.yaml -o src/schema.ts"
+  },
+  "devDependencies": { "openapi-typescript": "^7.13.0" }
+}

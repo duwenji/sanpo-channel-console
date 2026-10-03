@@ -16,17 +16,20 @@ import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
 import type { EnvConfig } from './config.js';
+import { ConsoleApp } from './console-app.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 export interface ConsoleStackProps extends StackProps {
   config: EnvConfig;
+  /** The built SPA; defaults to web/dist. */
+  webDist?: string;
 }
 
 /**
  * The channel management system (ADR-001). This first part is what publishing needs: the table
  * (DM-001), the public and archive buckets, CloudFront, the KMS signing keys, the publishing
- * Lambda with its daily schedule, and alarms. Cognito, the API and the SPA come next.
+ * Lambda with its daily schedule, and alarms; and the console (Cognito, the API, the SPA).
  */
 export class ConsoleStack extends Stack {
   constructor(scope: Construct, id: string, props: ConsoleStackProps) {
@@ -180,6 +183,15 @@ export class ConsoleStack extends Stack {
       alarmDescription: 'No successful publication for two days; the list expires 14 days after the last one',
     });
     for (const alarm of [failures, stale]) alarm.addAlarmAction(new cwActions.SnsAction(alarms));
+
+    new ConsoleApp(this, 'Console', {
+      config,
+      repoRoot,
+      webDist: props.webDist ?? `${repoRoot}web/dist`,
+      table,
+      publisher,
+      signingKeys,
+    });
 
     new CfnOutput(this, 'ProviderUrl', { value: `https://${distribution.distributionDomainName}` });
     new CfnOutput(this, 'TableName', { value: table.tableName });

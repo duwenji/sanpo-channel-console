@@ -14,12 +14,13 @@ AWS（ap-northeast-1）。API Gateway・Lambda・DynamoDB・Cognito・KMS、公�
 
 ```
 packages/protocol  API-002 の文書の作成と検証（共通）
-api/               Lambda（TypeScript）。今は公開の処理（api/src/publish）
+packages/api-types 管理 API の型（docs/api/console.openapi.yaml から生成）
+api/               Lambda（TypeScript）。公開の処理（api/src/publish）と管理 API（api/src/console）
 tools/root-key     ルート鍵の CLI（オフラインで使う）
 tools/provision    配備した提供元に署名鍵・鍵セットを登録して公開する（運用者の画面ができるまで）
 conformance/       API-002 の準拠テスト（任意の提供元の URL に対して流せる）
 infra/             AWS CDK
-web/               SPA（予定）
+web/               運用者・配信元の画面（React + Vite）
 validator/         機械審査の Lambda（予定。Kotlin、station-format）
 ```
 
@@ -28,7 +29,8 @@ validator/         機械審査の Lambda（予定。Kotlin、station-format）
 ```sh
 npm ci
 npx tsc -b            # 型の確認
-npx vitest run        # テスト
+npx vitest run        # テスト（管理 API のテストは Docker で DynamoDB Local を起動する）
+npm run build -w web  # 画面をビルド（cdk synth の前に要る）
 
 # 手元で公開して、準拠テストをかける（AWS は不要。鍵は使い捨て）
 npm run publish:local -w api            # ../.local/site に書き出し、提供元ID を表示
@@ -53,4 +55,5 @@ cd infra && npx cdk synth -c env=dev -c rootPublicKey=<base64url>
 - [DM-001](docs/data-model.md): データモデル
 - [API-001](docs/console-api.md): 管理 API（[OpenAPI](docs/api/console.openapi.yaml)）
 - [DES-001](docs/design/DES-001-publisher.md): 公開の処理・ルート鍵の CLI・準拠テスト
-- [配備の手順](docs/operations/deploy.md): 開発用は配備済み（https://d1vs7kc4zgmwrz.cloudfront.net）
+- [DES-002](docs/design/DES-002-operator-console.md): 運用者の画面
+- [配備の手順](docs/operations/deploy.md): 開発用は配備済み（リスト https://d1vs7kc4zgmwrz.cloudfront.net、画面 https://d3gvjt5e1ced74.cloudfront.net）
