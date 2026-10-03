@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  # station-format from SanpoGuide's GitHub Packages (the package grants this repository read access).
+  # station-format from SanpoGuide's GitHub Packages (a public repository: GITHUB_TOKEN can read it).
   packages: read
 
 jobs:

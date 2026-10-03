@@ -60,7 +60,7 @@
 | 1 | 機械審査の Lambda のコールドスタート（Java）は数秒 | 審査は非同期で、配信元の待ちは数十秒以内。問題になれば SnapStart |
 | 2 | `appStage`（必要なアプリの段）は今は常に 1（素材・きっかけは station-format がまだ拒む） | 素材に対応するとき |
 | 3 | 試用チケットをアプリで読み込む処理はアプリ側に未実装 | SanpoGuide の ADR-001 T-5 |
-| 4 | CI で SanpoGuide の GitHub Packages を読むには、パッケージ側でこのリポジトリに読み込みを許す設定が要る | 開発者に依頼（パッケージの設定 → Manage Actions access） |
+| 4 | ~~CI で SanpoGuide の GitHub Packages を読むための設定~~ → 不要だった。SanpoGuide は公開リポジトリで、`GITHUB_TOKEN`（`packages: read`）のまま読めた（PR #9 の CI で確認） | — |
 
 ## 関連ドキュメント・参照リンク
 
