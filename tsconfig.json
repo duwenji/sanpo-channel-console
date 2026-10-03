@@ -5,6 +5,9 @@
       "path": "packages/protocol"
     },
     {
+      "path": "packages/api-types"
+    },
+    {
       "path": "api"
     },
     {
@@ -18,6 +21,9 @@
     },
     {
       "path": "infra"
+    },
+    {
+      "path": "web"
     }
   ]
 }

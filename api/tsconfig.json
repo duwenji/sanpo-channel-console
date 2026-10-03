@@ -1,6 +1,20 @@
 {
   "extends": "../tsconfig.base.json",
-  "compilerOptions": { "rootDir": ".", "outDir": "dist", "emitDeclarationOnly": true },
-  "include": ["src", "test"],
-  "references": [{ "path": "../packages/protocol" }]
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "emitDeclarationOnly": true
+  },
+  "include": [
+    "src",
+    "test"
+  ],
+  "references": [
+    {
+      "path": "../packages/protocol"
+    },
+    {
+      "path": "../packages/api-types"
+    }
+  ]
 }

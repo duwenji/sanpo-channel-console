@@ -4,11 +4,13 @@
   "type": "module",
   "workspaces": [
     "packages/protocol",
+    "packages/api-types",
     "api",
     "tools/root-key",
     "tools/provision",
     "conformance",
-    "infra"
+    "infra",
+    "web"
   ],
   "scripts": {
     "typecheck": "tsc -b",

@@ -5,6 +5,7 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -16,17 +17,22 @@ import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import type { Construct } from 'constructs';
 import { fileURLToPath } from 'node:url';
 import type { EnvConfig } from './config.js';
+import { ConsoleApp } from './console-app.js';
+import { PROJECT_TAG, logGroupFor } from './common.js';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 
+
 export interface ConsoleStackProps extends StackProps {
   config: EnvConfig;
+  /** The built SPA; defaults to web/dist. */
+  webDist?: string;
 }
 
 /**
  * The channel management system (ADR-001). This first part is what publishing needs: the table
  * (DM-001), the public and archive buckets, CloudFront, the KMS signing keys, the publishing
- * Lambda with its daily schedule, and alarms. Cognito, the API and the SPA come next.
+ * Lambda with its daily schedule, and alarms; and the console (Cognito, the API, the SPA).
  */
 export class ConsoleStack extends Stack {
   constructor(scope: Construct, id: string, props: ConsoleStackProps) {
@@ -40,7 +46,7 @@ export class ConsoleStack extends Stack {
       partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
       billing: dynamodb.Billing.onDemand(),
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: config.cost.pointInTimeRecovery },
       deletionProtection: prod,
       timeToLiveAttribute: 'ttl',
       removalPolicy: prod ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
@@ -100,6 +106,7 @@ export class ConsoleStack extends Stack {
     );
 
     const publisher = new nodejs.NodejsFunction(this, 'PublishFunction', {
+      ...logGroupFor(this, 'PublishFunctionLogs', config),
       entry: `${repoRoot}api/src/publish/handler.ts`,
       projectRoot: repoRoot,
       depsLockFilePath: `${repoRoot}package-lock.json`,
@@ -180,6 +187,32 @@ export class ConsoleStack extends Stack {
       alarmDescription: 'No successful publication for two days; the list expires 14 days after the last one',
     });
     for (const alarm of [failures, stale]) alarm.addAlarmAction(new cwActions.SnsAction(alarms));
+
+    // A monthly budget on what this project costs, by its tag (docs/operations/cost.md).
+    if (config.cost.budget) {
+      new budgets.CfnBudget(this, 'MonthlyBudget', {
+        budget: {
+          budgetName: `sanpo-channel-console-${config.name}`,
+          budgetType: 'COST',
+          timeUnit: 'MONTHLY',
+          budgetLimit: { amount: config.cost.budget.monthlyUsd, unit: 'USD' },
+          costFilters: { TagKeyValue: [`user:project$${PROJECT_TAG}`] },
+        },
+        notificationsWithSubscribers: [
+          { notification: { notificationType: 'ACTUAL', comparisonOperator: 'GREATER_THAN', threshold: 80, thresholdType: 'PERCENTAGE' }, subscribers: [{ subscriptionType: 'EMAIL', address: config.cost.budget.email }] },
+          { notification: { notificationType: 'FORECASTED', comparisonOperator: 'GREATER_THAN', threshold: 100, thresholdType: 'PERCENTAGE' }, subscribers: [{ subscriptionType: 'EMAIL', address: config.cost.budget.email }] },
+        ],
+      });
+    }
+
+    new ConsoleApp(this, 'Console', {
+      config,
+      repoRoot,
+      webDist: props.webDist ?? `${repoRoot}web/dist`,
+      table,
+      publisher,
+      signingKeys,
+    });
 
     new CfnOutput(this, 'ProviderUrl', { value: `https://${distribution.distributionDomainName}` });
     new CfnOutput(this, 'TableName', { value: table.tableName });

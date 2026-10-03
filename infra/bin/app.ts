@@ -1,5 +1,6 @@
-import { App } from 'aws-cdk-lib';
+import { App, Tags } from 'aws-cdk-lib';
 import { configs, type EnvConfig } from '../lib/config.js';
+import { PROJECT_TAG } from '../lib/common.js';
 import { ConsoleStack } from '../lib/console-stack.js';
 
 // npx cdk synth -c env=dev -c rootPublicKey=<base64url of the dev root key>
@@ -13,8 +14,12 @@ if (!rootPublicKey) {
 }
 const config: EnvConfig = { ...base, rootPublicKey, ...(app.node.tryGetContext('alarmEmail') ? { alarmEmail: app.node.tryGetContext('alarmEmail') } : {}) };
 
-new ConsoleStack(app, `SanpoChannelConsole-${name}`, {
+const stack = new ConsoleStack(app, `SanpoChannelConsole-${name}`, {
   config,
   env: { region: config.region, ...(config.account ? { account: config.account } : {}) },
   description: `SanpoGuide channel management system (${name})`,
 });
+
+// Cost allocation tags: activate `project` once in the Billing console so the budget can count it.
+Tags.of(stack).add('project', PROJECT_TAG);
+Tags.of(stack).add('environment', name);
