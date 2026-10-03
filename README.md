@@ -50,6 +50,8 @@ cd infra && npx cdk synth -c env=dev -c rootPublicKey=<base64url>
 
 ## 文書
 
+- **[利用ガイド](docs/guide/README.md)**: 運用者・配信元・開発・保守をする人ごとの使い方（まずここから）
+
 - [TODO.md](docs/TODO.md): 進め方と次にやること
 - [ADR-001](docs/adr/ADR-001-aws-architecture.md): AWS の構成
 - [DM-001](docs/data-model.md): データモデル
