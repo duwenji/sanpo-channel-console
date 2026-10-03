@@ -52,6 +52,9 @@ beforeEach(async () => {
     requestPublish: async (trigger) => {
       published.push(trigger);
     },
+    presignUpload: async (key) => ({ url: 'https://intake.example/', fields: { key } }),
+    archiveUpload: async () => {},
+    deleteUser: async () => {},
   };
 });
 

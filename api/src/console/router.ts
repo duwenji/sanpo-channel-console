@@ -2,6 +2,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { Deps } from './deps.js';
 import { ApiError, fail, json, problem, type Caller, type Request, type Response } from './http.js';
 import * as op from './operator.js';
+import * as pub from './publisher.js';
 
 type Handler = (deps: Deps, req: Request) => Promise<Response>;
 
@@ -16,10 +17,25 @@ async function me(deps: Deps, req: Request): Promise<Response> {
   return json(200, { sub: req.caller.sub, roles: req.caller.roles, publisher });
 }
 
-/** Routes of this stage (operator screens); the rest of API-001 comes with the publisher screens and review. */
+/** Routes implemented so far; review, test tickets and key transfers come with stages 3b–3d. */
 const ROUTES: [string, string, Handler][] = [
   ['GET', '/api/me', me],
-  ['GET', '/api/channels/{channelId}', op.getChannel],
+  // The publisher (implementation stage 3a).
+  ['POST', '/api/publisher', pub.registerPublisher],
+  ['GET', '/api/publisher', pub.getMyPublisher],
+  ['PATCH', '/api/publisher', pub.updateMyPublisher],
+  ['DELETE', '/api/publisher', pub.deleteMyPublisher],
+  ['POST', '/api/publisher/keys/challenge', pub.createKeyChallenge],
+  ['POST', '/api/publisher/keys', pub.bindFirstKey],
+  ['GET', '/api/publisher/keys', pub.listMyKeys],
+  ['POST', '/api/channels', pub.registerChannel],
+  ['GET', '/api/channels', pub.listMyChannels],
+  ['GET', '/api/channels/{channelId}', pub.getChannel],
+  ['POST', '/api/channels/{channelId}/submissions', pub.createSubmission],
+  ['GET', '/api/channels/{channelId}/submissions', pub.listSubmissions],
+  ['GET', '/api/channels/{channelId}/submissions/{submissionId}', pub.getSubmission],
+  ['POST', '/api/channels/{channelId}/submissions/{submissionId}/withdraw', pub.withdrawSubmission],
+  // The operator.
   ['POST', '/api/admin/channels/{channelId}/revoke', op.revokeChannel],
   ['GET', '/api/admin/publishers', op.listPublishers],
   ['GET', '/api/admin/publishers/{publisherId}', op.getPublisher],
@@ -39,6 +55,7 @@ const ROUTES: [string, string, Handler][] = [
 const PARAM: Record<string, RegExp> = {
   channelId: /^[a-z0-9-]{3,40}$/,
   publisherId: /^[0-9A-HJKMNP-TV-Z]{26}$/,
+  submissionId: /^[0-9A-HJKMNP-TV-Z]{26}$/,
 };
 
 function match(pattern: string, path: string): Record<string, string> | null {

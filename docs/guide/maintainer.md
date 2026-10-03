@@ -47,8 +47,8 @@ flowchart LR
 | `packages/protocol` | API-002 の文書の作成と検証（署名、要約、ID、エラーコード） | DES-001 |
 | `packages/api-types` | 管理 API の型（`docs/api/console.openapi.yaml` から生成） | DES-002 |
 | `api/src/publish` | 公開の処理（Lambda）。DB・S3・CloudFront・KMS は差し替え口の後ろ | DES-001 |
-| `api/src/console` | 管理 API（Lambda）と Cognito の post-confirmation トリガー | DES-002 |
-| `web` | 運用者・配信元の画面（React + Vite） | DES-002 |
+| `api/src/console` | 管理 API（Lambda。運用者の操作 `operator.ts`、配信元の操作 `publisher.ts`）と Cognito の post-confirmation トリガー | DES-002・DES-003 |
+| `web` | 運用者・配信元の画面（React + Vite）。配信元の鍵の作成と署名は `web/src/publisher-crypto.ts` | DES-002・DES-003 |
 | `tools/root-key` | ルート鍵の CLI（オフラインの端末で使う） | DES-001 |
 | `tools/provision` | 配備した提供元の初期設定（署名鍵・鍵セットの登録と初回の公開） | DES-001 |
 | `conformance` | 任意の提供元に対する準拠テスト | DES-001 |
@@ -85,6 +85,8 @@ npm run build -w web    # 画面をビルド（cdk synth の前に要る）
 | `packages/protocol/test` | 署名・要約・ID、改ざん・期限切れ・巻き戻しを正しいエラーで拒むこと |
 | `api/test/publisher.test.ts` | 公開の処理（seq、有効な鍵だけ、食い違えば何も公開しない、取り下げ 7 日）と KMS・DynamoDB への要求の形 |
 | `api/test/console.test.ts` | 管理 API を DynamoDB Local で通しで。If-Match、状態、操作の記録、鍵セット、取り下げ、公開の処理との整合 |
+| `api/test/publisher-api.test.ts` | 配信元の操作を DynamoDB Local で通しで。鍵の紐づけ、上限、申請、取り消し、退会 |
+| `web/test` | 画面の暗号（鍵のファイル、アカウントID、パッケージの署名）を Node の WebCrypto で |
 | `tools/root-key/test` | ルート鍵の暗号化、鍵セットの確認と署名 |
 | `conformance/test` | 公開 → 手元の HTTP サーバー → 準拠テストの通しと、壊れた提供元を見つけること |
 | `infra/test` | CDK の構成（MFA 必須、KMS の鍵ポリシー、CSP、開発用と本番の違い） |

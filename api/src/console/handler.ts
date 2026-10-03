@@ -1,7 +1,10 @@
+import { AdminDeleteUserCommand, CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetPublicKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { CopyObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { createHash } from 'node:crypto';
@@ -16,6 +19,8 @@ function env(name: string): string {
 
 const kms = new KMSClient({});
 const lambda = new LambdaClient({});
+const s3 = new S3Client({});
+const cognito = new CognitoIdentityProviderClient({});
 let deps: Deps | undefined;
 
 /** The cursor key: from $CURSOR_KEY (development) or a Secrets Manager secret (production). */
@@ -39,6 +44,33 @@ async function load(): Promise<Deps> {
     },
     requestPublish: async (trigger) => {
       await lambda.send(new InvokeCommand({ FunctionName: env('PUBLISH_FUNCTION'), InvocationType: 'Event', Payload: JSON.stringify({ trigger }) }));
+    },
+    presignUpload: async (key, contentType, maxBytes) => {
+      // S3 itself refuses a larger file or another type (API-001 C-10).
+      const post = await createPresignedPost(s3, {
+        Bucket: env('INTAKE_BUCKET'),
+        Key: key,
+        Conditions: [['content-length-range', 1, maxBytes], ['eq', '$Content-Type', contentType]],
+        Fields: { 'Content-Type': contentType },
+        Expires: 15 * 60,
+      });
+      return { url: post.url, fields: post.fields };
+    },
+    archiveUpload: async (key) => {
+      const bucket = env('INTAKE_BUCKET');
+      const target = key.replace(/^intake\//, 'archive/');
+      try {
+        await s3.send(new CopyObjectCommand({ Bucket: bucket, CopySource: `${bucket}/${key}`, Key: target }));
+      } catch (e) {
+        // Nothing was uploaded: nothing to keep.
+        if ((e as { name?: string }).name === 'NoSuchKey') return;
+        throw e;
+      }
+      await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    },
+    deleteUser: async (sub) => {
+      // Sign-in is by email, so the user name is the sub.
+      await cognito.send(new AdminDeleteUserCommand({ UserPoolId: env('USER_POOL_ID'), Username: sub }));
     },
   };
 }

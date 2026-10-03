@@ -39,8 +39,8 @@ sequenceDiagram
     participant M as 管理システム
     participant O as 運用者
     participant A as アプリ
-    P->>M: 登録・鍵の紐づけ・チャンネルIDの登録 🚧
-    P->>M: パッケージ（配信元の署名つき）を申請 🚧
+    P->>M: 登録・鍵の紐づけ・チャンネルIDの登録
+    P->>M: パッケージ（画面で配信元の署名をつけて）を申請
     M->>M: 機械の確認（アプリと同じ station-format）🚧
     P->>A: 試用チケットで、自分の端末で試す 🚧
     O->>M: 審査（中身と、AI に話させた見本）🚧
@@ -54,7 +54,7 @@ sequenceDiagram
 
 ## 3. チャンネルと申請の状態
 
-**申請**（1 回のパッケージの提出）🚧
+**申請**（1 回のパッケージの提出。アップロードまでと取り消しは使える。機械の確認からあとは 🚧）
 
 ```mermaid
 stateDiagram-v2

@@ -16,6 +16,12 @@ export interface Deps {
   kmsPublicKey: (keyArn: string) => Promise<{ keySpec: string | undefined; publicKey: Uint8Array }>;
   /** Starts the publisher without waiting for it (ADR-001 A-10). */
   requestPublish: (trigger: Trigger) => Promise<void>;
+  /** A presigned S3 POST into the intake bucket; S3 enforces the size (API-001 C-10). */
+  presignUpload: (key: string, contentType: string, maxBytes: number) => Promise<{ url: string; fields: Record<string, string> }>;
+  /** Moves an intake object under `archive/`, where it expires after 90 days (DM-001 M-4). */
+  archiveUpload: (key: string) => Promise<void>;
+  /** Deletes the Cognito user (API-001 C-4, leaving). */
+  deleteUser: (sub: string) => Promise<void>;
 }
 
 /** One entry of the audit log, written in the same transaction as the change (DM-001 AUDIT, DV-10). */
