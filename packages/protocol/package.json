@@ -1,0 +1,17 @@
+{
+  "name": "@sanpo-console/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SanpoGuide API-002 (approved channel list): signed documents, ids, building and verifying",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./testing": {
+      "types": "./src/testing.ts",
+      "default": "./src/testing.ts"
+    }
+  }
+}

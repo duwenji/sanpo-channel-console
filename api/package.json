@@ -1,0 +1,28 @@
+{
+  "name": "@sanpo-console/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lambda functions of the channel management system",
+  "exports": {
+    "./publish": {
+      "types": "./src/publish/index.ts",
+      "default": "./src/publish/index.ts"
+    }
+  },
+  "scripts": {
+    "publish:local": "tsx src/publish/local-cli.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudfront": "^3.1146.0",
+    "@aws-sdk/client-dynamodb": "^3.1146.0",
+    "@aws-sdk/client-kms": "^3.1146.0",
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/lib-dynamodb": "^3.1146.0",
+    "@sanpo-console/protocol": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
+    "aws-sdk-client-mock": "^4.1.0"
+  }
+}

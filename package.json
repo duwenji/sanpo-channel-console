@@ -1,0 +1,26 @@
+{
+  "name": "sanpo-channel-console",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/protocol",
+    "api",
+    "tools/root-key",
+    "conformance",
+    "infra"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "synth": "npm run synth -w infra"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
