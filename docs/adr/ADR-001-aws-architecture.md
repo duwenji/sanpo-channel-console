@@ -178,7 +178,7 @@ flowchart LR
 | T-1 | SanpoGuide の API-002 1.1・ADR-001 1.1 の承認 | 開発者 | 本書の承認と同時 |
 | T-2 | データモデル（DynamoDB のキー設計、版の状態遷移） | 開発者・Claude | 実装の前 |
 | T-3 | 管理システムの API の契約書（SPA と Lambda の間） | 開発者・Claude | T-2 の後 |
-| T-4 | `station-format` の公開方法を決めて公開する（GitHub Packages、または git のサブモジュール） | 開発者・Claude | 機械審査の実装の前 |
+| T-4 | `station-format` の公開方法を決めて公開する。**完了（2026-10-03）**: GitHub Packages に `com.example.sanpoguide:station-format`（1.0.0）として公開。版は SanpoGuide の `gradle.properties` の `stationFormatVersion`、タグ `station-format-v<版>` で公開。見本用のプロンプト（`ReviewSamples`）も含む（SanpoGuide RFC-001）。読み込みには `read:packages` のトークンが要る | 開発者・Claude | 機械審査の実装の前 |
 | T-5 | ルート鍵と署名鍵の手順書（作成・保管・入れ替え・失効。SanpoGuide ADR-001 T-3） | 開発者 | 本番の提供元を公開する前 |
 | T-6 | 実装の順番: ① CDK の土台・公開の Lambda・ルート鍵の CLI・準拠テスト → ② 運用者の画面（審査・承認・取り下げ） → ③ 配信元の画面（申請・試用チケット・鍵の移し替え） | Claude | T-2〜T-5 の後 |
 | T-7 | 独自ドメインを決める（SES の送信元にも使う） | 開発者 | 本番の配備の前 |
@@ -224,4 +224,5 @@ flowchart LR
 |---|---|---|---|
 | 2026-10-03 | 0.1 | 草案（D-1〜D-6 は開発者の決定、A-1〜A-17 は提案） | Claude |
 | 2026-10-03 | 1.1 | A-19（SES での配信元への通知）、T-8 を追加 | Claude（承認: 開発者） |
+| 2026-10-03 | 1.1 | T-4 の完了を記録（決定事項の変更なし） | Claude |
 | 2026-10-03 | 1.0 | A-1〜A-17 を承認。D-7（配信元の登録は誰でもできる）と A-18（その備え）を追加し、未決事項 No.1 を解消 | Claude（承認: 開発者） |
