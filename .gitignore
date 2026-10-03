@@ -8,3 +8,7 @@ build/
 # ルート鍵の秘密鍵は絶対にリポジトリに入れない
 *.key
 *.pem
+*.tsbuildinfo
+coverage/
+# Local publishing output and dev keys (never commit private keys)
+.local/
