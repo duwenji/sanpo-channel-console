@@ -6,6 +6,7 @@
     "packages/protocol",
     "api",
     "tools/root-key",
+    "tools/provision",
     "conformance",
     "infra"
   ],
