@@ -25,3 +25,4 @@ conformance/   API-002 の準拠テスト（任意の提供元の URL に対し�
 
 - [TODO.md](docs/TODO.md): 進め方と次にやること
 - [ADR-001](docs/adr/ADR-001-aws-architecture.md): AWS の構成
+- [DM-001](docs/data-model.md): データモデル
