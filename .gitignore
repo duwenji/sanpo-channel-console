@@ -1,0 +1,10 @@
+node_modules/
+dist/
+cdk.out/
+build/
+.gradle/
+*.local
+.env*
+# ルート鍵の秘密鍵は絶対にリポジトリに入れない
+*.key
+*.pem
