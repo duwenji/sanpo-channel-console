@@ -1,0 +1,17 @@
+{
+  "name": "@sanpo-console/provision",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sets up a deployed provider until the operator screen exists: signing key, keyset, first publication",
+  "scripts": { "provision": "tsx src/cli.ts" },
+  "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1146.0",
+    "@aws-sdk/client-kms": "^3.1146.0",
+    "@aws-sdk/client-lambda": "^3.1146.0",
+    "@aws-sdk/client-dynamodb": "^3.1146.0",
+    "@aws-sdk/lib-dynamodb": "^3.1146.0",
+    "@sanpo-console/protocol": "0.1.0",
+    "@sanpo-console/root-key": "0.1.0"
+  }
+}

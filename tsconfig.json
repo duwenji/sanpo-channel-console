@@ -1,10 +1,23 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/protocol" },
-    { "path": "api" },
-    { "path": "tools/root-key" },
-    { "path": "conformance" },
-    { "path": "infra" }
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "api"
+    },
+    {
+      "path": "tools/root-key"
+    },
+    {
+      "path": "tools/provision"
+    },
+    {
+      "path": "conformance"
+    },
+    {
+      "path": "infra"
+    }
   ]
 }
