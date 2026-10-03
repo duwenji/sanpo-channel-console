@@ -10,6 +10,9 @@ import { HomePage } from './pages/home';
 import { KeysPage } from './pages/keys';
 import { PublicationsPage } from './pages/publications';
 import { PublisherPage, PublishersPage } from './pages/publishers';
+import { PublisherChannel, PublisherChannels } from './pages/publisher/channels';
+import { PublisherHome } from './pages/publisher/home';
+import { PublisherSettings } from './pages/publisher/settings';
 import './style.css';
 
 interface Session {
@@ -66,14 +69,22 @@ const NAV: [string, string][] = [
   ['/audit', '操作の記録'],
 ];
 
+const PUBLISHER_NAV: [string, string][] = [
+  ['/', '概要'],
+  ['/channels', 'チャンネル'],
+  ['/settings', '設定'],
+];
+
 function Shell({ session }: { session: Session }) {
   const operator = session.me.roles.includes('operator');
+  const publisher = session.me.roles.includes('publisher');
+  const nav = operator ? NAV : publisher ? PUBLISHER_NAV : [];
   return (
     <div className="shell">
       <header>
         <strong>チャンネル管理</strong>
         {session.config.environment !== 'prod' && <span className="badge">開発用</span>}
-        <nav>{operator && NAV.map(([to, label]) => <NavLink key={to} to={to} end={to === '/'}>{label}</NavLink>)}</nav>
+        <nav>{nav.map(([to, label]) => <NavLink key={to} to={to} end={to === '/'}>{label}</NavLink>)}</nav>
         <button className="link" onClick={() => void session.auth.signOut()}>ログアウト</button>
       </header>
       <main>
@@ -89,10 +100,18 @@ function Shell({ session }: { session: Session }) {
             <Route path="/audit" element={<AuditPage />} />
             <Route path="*" element={<p>このページはありません。</p>} />
           </Routes>
+        ) : publisher ? (
+          <Routes>
+            <Route path="/" element={<PublisherHome />} />
+            <Route path="/channels" element={<PublisherChannels />} />
+            <Route path="/channels/:channelId" element={<PublisherChannel />} />
+            <Route path="/settings" element={<PublisherSettings />} />
+            <Route path="*" element={<p>このページはありません。</p>} />
+          </Routes>
         ) : (
           <section>
-            <h1>配信元の画面は準備中です</h1>
-            <p>このアカウントは運用者ではありません。配信元の申請の画面は、次の段階で用意します。</p>
+            <h1>このアカウントでは使えません</h1>
+            <p>運用者にも配信元にもなっていません。登録の確認が済んでいるか確かめ、一度ログアウトしてからログインし直してください。</p>
           </section>
         )}
       </main>

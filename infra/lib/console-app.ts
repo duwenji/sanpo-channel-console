@@ -123,6 +123,25 @@ export class ConsoleApp extends Construct {
     new wafv2.CfnWebACLAssociation(this, 'UserPoolWafAssociation', { resourceArn: userPool.userPoolArn, webAclArn: waf.attrArn });
     }
 
+    // ---- uploads (API-001 C-10, DM-001 M-4) ----
+    // Packages and icons go straight from the browser with presigned POSTs. Nothing here is public.
+    // CORS allows any origin: a POST still needs the presigned policy, and naming the console's own
+    // origin here would make a cycle (bucket → distribution → headers policy → bucket).
+    const intakeBucket = new s3.Bucket(this, 'IntakeBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: prod ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+      autoDeleteObjects: !prod,
+      cors: [{ allowedMethods: [s3.HttpMethods.POST], allowedOrigins: ['*'], allowedHeaders: ['*'], maxAge: 3600 }],
+      lifecycleRules: [
+        // Settled submissions are kept 90 days (DM-001 M-4); uploads that never got a result go after 30.
+        { prefix: 'archive/', expiration: Duration.days(90) },
+        { prefix: 'intake/', expiration: Duration.days(30) },
+        { abortIncompleteMultipartUploadAfter: Duration.days(1) },
+      ],
+    });
+
     // ---- the SPA's distribution, also fronting the API (API-001 C-5) ----
     const webBucket = new s3.Bucket(this, 'WebBucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -166,7 +185,7 @@ export class ConsoleApp extends Construct {
             "script-src 'self'",
             "style-src 'self'",
             "img-src 'self' data:",
-            `connect-src 'self' https://${authDomain} https://cognito-idp.${stack.region}.${stack.urlSuffix}`,
+            `connect-src 'self' https://${authDomain} https://cognito-idp.${stack.region}.${stack.urlSuffix} https://${intakeBucket.bucketRegionalDomainName}`,
             `form-action 'self' https://${authDomain}`,
             "frame-ancestors 'none'",
             "base-uri 'none'",
@@ -255,7 +274,16 @@ export class ConsoleApp extends Construct {
     } else {
       consoleFn.addEnvironment('CURSOR_KEY', randomBytes(32).toString('base64url'));
     }
+    consoleFn.addEnvironment('INTAKE_BUCKET', intakeBucket.bucketName);
+    consoleFn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
     consoleFn.addEnvironment('NODE_OPTIONS', '--enable-source-maps');
+    // Presigning needs the right to put; moving to archive/ needs read, put and delete.
+    intakeBucket.grantPut(consoleFn, 'intake/*');
+    intakeBucket.grantRead(consoleFn, 'intake/*');
+    intakeBucket.grantDelete(consoleFn, 'intake/*');
+    intakeBucket.grantPut(consoleFn, 'archive/*');
+    // Leaving deletes the user (API-001 C-4).
+    consoleFn.addToRolePolicy(new iam.PolicyStatement({ actions: ['cognito-idp:AdminDeleteUser'], resources: [userPool.userPoolArn] }));
     props.table.grantReadWriteData(consoleFn);
     props.publisher.grantInvoke(consoleFn);
     for (const key of props.signingKeys) key.grant(consoleFn, 'kms:GetPublicKey', 'kms:DescribeKey');
@@ -282,6 +310,7 @@ export class ConsoleApp extends Construct {
     });
 
     new CfnOutput(stack, 'ConsoleUrl', { value: consoleUrl });
+    new CfnOutput(stack, 'IntakeBucketName', { value: intakeBucket.bucketName });
     new CfnOutput(stack, 'UserPoolId', { value: userPool.userPoolId });
     new CfnOutput(stack, 'UserPoolClientId', { value: client.userPoolClientId });
     new CfnOutput(stack, 'LoginDomain', { value: `https://${authDomain}` });

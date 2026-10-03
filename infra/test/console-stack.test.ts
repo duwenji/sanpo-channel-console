@@ -55,7 +55,7 @@ describe('ConsoleStack', () => {
   });
 
   it('keeps the public bucket private behind CloudFront with HTTPS only', () => {
-    prod.resourceCountIs('AWS::S3::Bucket', 3);
+    prod.resourceCountIs('AWS::S3::Bucket', 4);
     prod.hasResourceProperties('AWS::S3::Bucket', {
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true },
     });
@@ -135,5 +135,15 @@ describe('ConsoleStack', () => {
     prod.resourceCountIs('AWS::SecretsManager::Secret', 1);
     prod.resourceCountIs('AWS::Logs::LogGroup', 0);
     prod.resourceCountIs('AWS::Budgets::Budget', 0);
+  });
+
+  it('takes uploads straight to a private intake bucket that forgets settled packages after 90 days', () => {
+    prod.hasResourceProperties('AWS::S3::Bucket', {
+      CorsConfiguration: { CorsRules: [Match.objectLike({ AllowedMethods: ['POST'] })] },
+      LifecycleConfiguration: { Rules: Match.arrayWith([Match.objectLike({ Prefix: 'archive/', ExpirationInDays: 90 })]) },
+    });
+    const policies = JSON.stringify(prod.findResources('AWS::IAM::Policy'));
+    expect(policies).toContain('cognito-idp:AdminDeleteUser');
+    expect(JSON.stringify(prod.findResources('AWS::CloudFront::ResponseHeadersPolicy'))).toContain('IntakeBucket');
   });
 });
