@@ -1,6 +1,7 @@
 import { CreateTableCommand, DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 /**
  * DynamoDB Local for tests that depend on conditions, transactions and GSIs. Uses
@@ -53,12 +54,11 @@ function tableDefinition(TableName: string) {
   };
 }
 
-let tables = 0;
-
 /** A fresh table per test, so tests don't see each other's items. */
 export async function freshTable(endpoint: string): Promise<{ table: string; raw: DynamoDBClient; db: DynamoDBDocumentClient }> {
   const raw = rawClient(endpoint);
-  const table = `t${Date.now()}${tables++}`;
+  // Test files run in parallel against one endpoint in CI: a random name never collides.
+  const table = `t${randomUUID().replace(/-/g, '')}`;
   await raw.send(new CreateTableCommand(tableDefinition(table)));
   return { table, raw, db: DynamoDBDocumentClient.from(raw, { marshallOptions: { removeUndefinedValues: true } }) };
 }

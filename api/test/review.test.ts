@@ -5,7 +5,7 @@ import { makeTestProvider, type TestProvider } from '@sanpo-console/protocol/tes
 import { zipSync } from 'fflate';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Deps } from '../src/console/deps.js';
+import type { Deps, Notice } from '../src/console/deps.js';
 import type { Caller } from '../src/console/http.js';
 import { route } from '../src/console/router.js';
 import { CursorCodec } from '../src/console/util.js';
@@ -24,6 +24,7 @@ let raw: DynamoDBClient;
 let clock: number;
 let provider: TestProvider;
 let published: Trigger[];
+let notices: Notice[];
 let uploads: Map<string, Uint8Array>;
 let records: Map<string, string>;
 let archived: string[];
@@ -39,6 +40,7 @@ beforeEach(async () => {
   clock = start.getTime();
   provider = await makeTestProvider({ now: start });
   published = [];
+  notices = [];
   uploads = new Map();
   records = new Map();
   archived = [];
@@ -60,6 +62,7 @@ beforeEach(async () => {
     presignDownload: async (key) => `https://intake.example/${key}?signed`,
     readRecord: async (key) => records.get(key),
     writeRecord: async (key, body) => void records.set(key, body),
+    notify: async (n) => void notices.push(n),
     publishApproved: async ({ packageSha256, iconSha256 }) => ({
       packageUrl: `https://provider.example/pkg/${packageSha256}.zip`,
       iconUrl: `https://provider.example/icons/${iconSha256}.png`,
@@ -67,9 +70,9 @@ beforeEach(async () => {
   };
 });
 
-async function call(caller: Caller, method: string, path: string, options: { body?: unknown; ifMatch?: number } = {}) {
+async function call(caller: Caller, method: string, path: string, options: { body?: unknown; ifMatch?: number; query?: Record<string, string> } = {}) {
   const res = await route(deps, {
-    method, path, query: {}, body: options.body, caller, requestId: 'req',
+    method, path, query: options.query ?? {}, body: options.body, caller, requestId: 'req',
     headers: options.ifMatch !== undefined ? { 'if-match': `"${options.ifMatch}"` } : {},
   });
   return { status: res.statusCode, headers: res.headers, body: res.body ? JSON.parse(res.body) : undefined };
@@ -217,5 +220,109 @@ describe('deciding', () => {
     const list = verifyChannelList(JSON.parse(utf8.decode(storage.public.get(LIST_PATH)!)), discovery.keyset, { now: new Date(clock) }).body;
     expect(list.channels).toHaveLength(1);
     expect(list.channels[0]).toMatchObject({ id: 'kamakura-history', version: 1, publisherName: '鎌倉歴史散歩の会', name: '鎌倉歴史散歩' });
+  });
+});
+
+describe('notices', () => {
+  it('queues one email notice per decision, with the findings but no operator id', async () => {
+    const first = await awaitingReview(1);
+    await call(operator, 'POST', `${base(first)}/start`, { ifMatch: 2 });
+    await call(operator, 'POST', `${base(first)}/approve`, { body: { message: '問題ありません' }, ifMatch: 3 });
+    const second = await awaitingReview(2);
+    await call(operator, 'POST', `${base(second)}/start`, { ifMatch: 2 });
+    await call(operator, 'POST', `${base(second)}/return`, { body: { findings: [{ item: '2.2', detail: '立入禁止' }] }, ifMatch: 3 });
+    const channel = await call(operator, 'GET', '/api/channels/kamakura-history');
+    await call(operator, 'POST', '/api/admin/channels/kamakura-history/revoke', { body: { reason: '苦情', severity: 'low' }, ifMatch: channel.body.rev });
+    expect(notices.map((n) => [n.event, n.version])).toEqual([['submission.approved', 1], ['submission.returned', 2], ['channel.revoked', undefined]]);
+    expect(notices[1]).toMatchObject({ channelId: 'kamakura-history', findings: [{ item: '2.2', detail: '立入禁止' }] });
+    expect(new Set(notices.map((n) => n.noticeId)).size).toBe(3);
+    expect(JSON.stringify(notices)).not.toContain(operator.sub);
+  });
+
+  it('never fails the operation when the queue does', async () => {
+    deps.notify = async () => {
+      throw new Error('queue down');
+    };
+    const sid = await awaitingReview();
+    await call(operator, 'POST', `${base(sid)}/start`, { ifMatch: 2 });
+    expect((await call(operator, 'POST', `${base(sid)}/approve`, { body: {}, ifMatch: 3 })).status).toBe(200);
+  });
+});
+
+describe('key transfers', () => {
+  async function proof(caller: Caller, key = generateEd25519()) {
+    const challenge = await call(caller, 'POST', '/api/publisher/keys/challenge');
+    return { nonce: challenge.body.nonce, publicKey: b64url.encode(key.publicKey), signature: b64url.encode(signEd25519(key.privateKey, utf8.encode(challenge.body.message))) };
+  }
+  const ask = async (extra: object = {}) =>
+    call(alice, 'POST', '/api/publisher/key-transfers', { body: { ...(await proof(alice)), reason: 'lost', publicReason: '配信元の鍵の紛失', note: '端末が壊れた', ...extra } });
+  const approve = (t: { publisherId: string; transferId: string; rev: number }, body: unknown = { verification: { method: '登録済みの連絡先への返信', detail: '10/4 に返信を確認' } }) =>
+    call(operator, 'POST', `/api/admin/publishers/${t.publisherId}/key-transfers/${t.transferId}/approve`, { body, ifMatch: t.rev });
+
+  it('moves every channel to the new key, returns pending submissions, and lists the change from the next version', async () => {
+    const v1 = await awaitingReview(1);
+    await call(operator, 'POST', `${base(v1)}/start`, { ifMatch: 2 });
+    await call(operator, 'POST', `${base(v1)}/approve`, { body: {}, ifMatch: 3 });
+    const v2 = await awaitingReview(2);
+    const oldAccount = (await call(alice, 'GET', '/api/publisher')).body.activeAccountId as string;
+
+    expect((await ask({ publicReason: '' })).body.code).toBe('invalid_request');
+    const asked = await ask();
+    expect(asked.status).toBe(201);
+    expect(asked.body).toMatchObject({ state: 'requested', fromAccountId: oldAccount, reason: 'lost', publicReason: '配信元の鍵の紛失' });
+    expect((await ask()).body.code).toBe('transfer_pending');
+    expect((await call(alice, 'POST', '/api/channels/kamakura-history/submissions', { body: {} })).body.code).toBe('transfer_pending');
+    expect((await call(alice, 'GET', '/api/publisher/keys')).body.items.map((k: { status: string }) => k.status).sort()).toEqual(['active', 'pending_transfer']);
+
+    const queue = await call(operator, 'GET', '/api/admin/key-transfers');
+    expect(queue.body.items.map((t: { transferId: string }) => t.transferId)).toEqual([asked.body.transferId]);
+    expect((await call(alice, 'GET', '/api/admin/key-transfers')).body.code).toBe('forbidden');
+    expect((await approve(asked.body, { verification: { method: '' } })).body.code).toBe('invalid_request');
+
+    const approved = await approve(asked.body);
+    expect(approved.body).toMatchObject({ state: 'approved', returnedSubmissions: [v2], verification: { method: '登録済みの連絡先への返信' } });
+    expect(published).toContain('transfer');
+    expect(notices.at(-1)).toMatchObject({ event: 'transfer.approved', returned: 1 });
+    expect((await call(alice, 'GET', '/api/publisher')).body.activeAccountId).toBe(asked.body.toAccountId);
+    const keys = (await call(alice, 'GET', '/api/publisher/keys')).body.items as { accountId: string; status: string }[];
+    expect(keys.map((k) => [k.accountId === oldAccount, k.status]).sort()).toEqual([[false, 'active'], [true, 'unbound']]);
+    expect((await call(alice, 'GET', `/api/channels/kamakura-history/submissions/${v2}`)).body).toMatchObject({ state: 'returned', decision: { action: 'return' } });
+    expect((await call(operator, 'GET', '/api/admin/review-queue')).body.items).toEqual([]);
+    expect((await call(operator, 'GET', '/api/admin/key-transfers')).body.items).toEqual([]);
+
+    // The listed version is still the old key's: the list does not claim a change yet (V-16).
+    const store = new DynamoStore(deps.table, raw);
+    expect((await store.listedChannels(new Date(clock)))[0]).not.toHaveProperty('publisherChange');
+    expect((await call(alice, 'GET', '/api/channels/kamakura-history')).body.publisherChange).toMatchObject({ from: oldAccount, reason: '配信元の鍵の紛失' });
+
+    // The first version with the new key carries it, for 90 days.
+    const v3 = await awaitingReview(3);
+    expect((await call(alice, 'GET', `/api/channels/kamakura-history/submissions/${v3}`)).body.accountId).toBe(asked.body.toAccountId);
+    await call(operator, 'POST', `${base(v3)}/start`, { ifMatch: 2 });
+    await call(operator, 'POST', `${base(v3)}/approve`, { body: {}, ifMatch: 3 });
+    const [entry] = await store.listedChannels(new Date(clock));
+    expect(entry).toMatchObject({ version: 3, publisher: asked.body.toAccountId, publisherChange: { from: oldAccount, reason: '配信元の鍵の紛失' } });
+    const later = await store.listedChannels(new Date(clock + 91 * 86_400_000));
+    expect(later[0]).not.toHaveProperty('publisherChange');
+  });
+
+  it('can be cancelled by the publisher or refused by an operator, unbinding the new key', async () => {
+    await awaitingReview();
+    const first = await ask();
+    expect((await call(alice, 'POST', `/api/publisher/key-transfers/${first.body.transferId}/cancel`)).status).toBe(428);
+    const cancelled = await call(alice, 'POST', `/api/publisher/key-transfers/${first.body.transferId}/cancel`, { ifMatch: 1 });
+    expect(cancelled.body.state).toBe('cancelled');
+
+    const second = await ask({ reason: 'leaked' });
+    expect(second.status).toBe(201);
+    const refused = await call(operator, 'POST', `/api/admin/publishers/${second.body.publisherId}/key-transfers/${second.body.transferId}/reject`, {
+      body: { reason: '本人と確認できなかった' }, ifMatch: 1,
+    });
+    expect(refused.body).toMatchObject({ state: 'rejected', decisionReason: '本人と確認できなかった' });
+    expect(notices.at(-1)).toMatchObject({ event: 'transfer.rejected', message: '本人と確認できなかった' });
+    expect((await call(alice, 'GET', '/api/publisher/keys')).body.items.map((k: { status: string }) => k.status).sort()).toEqual(['active', 'unbound', 'unbound']);
+    expect((await call(alice, 'GET', '/api/publisher/key-transfers')).body.items.map((t: { state: string }) => t.state)).toEqual(['rejected', 'cancelled']);
+    expect((await call(operator, 'GET', '/api/admin/key-transfers', { query: { state: 'rejected' } })).body.items).toHaveLength(1);
+    expect((await call(alice, 'GET', '/api/publisher')).body.activeAccountId).toBe(first.body.fromAccountId);
   });
 });

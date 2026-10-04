@@ -4,6 +4,7 @@ import { ApiError, fail, json, problem, type Caller, type Request, type Response
 import * as op from './operator.js';
 import * as pub from './publisher.js';
 import * as review from './review.js';
+import * as transfer from './transfer.js';
 
 type Handler = (deps: Deps, req: Request) => Promise<Response>;
 
@@ -18,7 +19,6 @@ async function me(deps: Deps, req: Request): Promise<Response> {
   return json(200, { sub: req.caller.sub, roles: req.caller.roles, publisher });
 }
 
-/** Routes implemented so far; key transfers and notifications come with stage 3d. */
 const ROUTES: [string, string, Handler][] = [
   ['GET', '/api/me', me],
   // The publisher (implementation stage 3a).
@@ -29,6 +29,10 @@ const ROUTES: [string, string, Handler][] = [
   ['POST', '/api/publisher/keys/challenge', pub.createKeyChallenge],
   ['POST', '/api/publisher/keys', pub.bindFirstKey],
   ['GET', '/api/publisher/keys', pub.listMyKeys],
+  // Key transfers (implementation stage 3d).
+  ['POST', '/api/publisher/key-transfers', transfer.requestKeyTransfer],
+  ['GET', '/api/publisher/key-transfers', transfer.listMyKeyTransfers],
+  ['POST', '/api/publisher/key-transfers/{transferId}/cancel', transfer.cancelKeyTransfer],
   ['POST', '/api/channels', pub.registerChannel],
   ['GET', '/api/channels', pub.listMyChannels],
   ['GET', '/api/channels/{channelId}', pub.getChannel],
@@ -57,6 +61,9 @@ const ROUTES: [string, string, Handler][] = [
   ['POST', '/api/admin/publishers/{publisherId}/suspend', op.setPublisherSuspended(true)],
   ['POST', '/api/admin/publishers/{publisherId}/resume', op.setPublisherSuspended(false)],
   ['PUT', '/api/admin/publishers/{publisherId}/limits', op.setPublisherLimits],
+  ['GET', '/api/admin/key-transfers', transfer.listKeyTransfers],
+  ['POST', '/api/admin/publishers/{publisherId}/key-transfers/{transferId}/approve', transfer.approveKeyTransfer],
+  ['POST', '/api/admin/publishers/{publisherId}/key-transfers/{transferId}/reject', transfer.rejectKeyTransfer],
   ['GET', '/api/admin/signing-keys', op.listSigningKeys],
   ['POST', '/api/admin/signing-keys', op.registerSigningKey],
   ['GET', '/api/admin/keysets', op.listKeysets],
@@ -70,6 +77,7 @@ const PARAM: Record<string, RegExp> = {
   channelId: /^[a-z0-9-]{3,40}$/,
   publisherId: /^[0-9A-HJKMNP-TV-Z]{26}$/,
   submissionId: /^[0-9A-HJKMNP-TV-Z]{26}$/,
+  transferId: /^[0-9A-HJKMNP-TV-Z]{26}$/,
 };
 
 function match(pattern: string, path: string): Record<string, string> | null {

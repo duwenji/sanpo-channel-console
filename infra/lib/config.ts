@@ -17,6 +17,11 @@ export interface EnvConfig {
   contact?: string;
   /** Where alarms go; set it before the first deployment. */
   alarmEmail?: string;
+  /**
+   * The publishers' emails (ADR-001 A-19): sent with SES from a verified domain, or only recorded
+   * (`log`) where there is no sending domain yet (T-7) or SES is still in the sandbox (T-8).
+   */
+  notify: { mode: 'log' } | { mode: 'ses'; from: string; configurationSet?: string };
   /** What this environment pays for (see docs/operations/cost.md). Production keeps every protection. */
   cost: {
     /** AWS WAF on the user pool (ADR-001 A-18): about 7 USD a month. */
@@ -41,6 +46,8 @@ export const configs: Record<EnvConfig['name'], Omit<EnvConfig, 'rootPublicKey'>
     region: 'ap-northeast-1',
     providerName: 'SanpoGuide チャンネル（開発）',
     signingKeyIds: ['k-2026-10'],
+    // No sending domain in development: the notices are recorded, not sent (2026-10-04, the developer's decision).
+    notify: { mode: 'log' },
     // Development keeps cost to the minimum (2026-10-04, the developer's decision).
     cost: {
       waf: false,
@@ -55,6 +62,8 @@ export const configs: Record<EnvConfig['name'], Omit<EnvConfig, 'rootPublicKey'>
     region: 'ap-northeast-1',
     providerName: 'SanpoGuide 公式チャンネル',
     signingKeyIds: ['k-2026-10'],
+    // Switch to { mode: 'ses', from: … } once the domain (T-7) and SES production access (T-8) are ready.
+    notify: { mode: 'log' },
     cost: { waf: true, pointInTimeRecovery: true, cursorKey: 'secret' },
   },
 };

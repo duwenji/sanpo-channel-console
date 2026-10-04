@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetPublicKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
@@ -25,6 +26,7 @@ const kms = new KMSClient({});
 const lambda = new LambdaClient({});
 const s3 = new S3Client({});
 const cognito = new CognitoIdentityProviderClient({});
+const sqs = new SQSClient({});
 let deps: Deps | undefined;
 
 /** The cursor key: from $CURSOR_KEY (development) or a Secrets Manager secret (production). */
@@ -136,6 +138,9 @@ async function load(): Promise<Deps> {
     deleteUser: async (sub) => {
       // Sign-in is by email, so the user name is the sub.
       await cognito.send(new AdminDeleteUserCommand({ UserPoolId: env('USER_POOL_ID'), Username: sub }));
+    },
+    notify: async (notice) => {
+      await sqs.send(new SendMessageCommand({ QueueUrl: env('NOTIFY_QUEUE_URL'), MessageBody: JSON.stringify(notice) }));
     },
   };
 }

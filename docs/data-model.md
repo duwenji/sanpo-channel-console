@@ -11,8 +11,8 @@
 | 作成日 | 2026-10-03 |
 | 作成者 | Claude（開発者との検討） |
 | 承認者 | 開発者（2026-10-03） |
-| ステータス | 承認済 |
-| 版 | 1.1 |
+| ステータス | 1.1 承認済・1.2 は承認待ち（実装 3d に合わせた補足） |
+| 版 | 1.2 |
 
 ## 目的・背景
 
@@ -189,13 +189,16 @@ stateDiagram-v2
 | 審査の記録 | `CH#{channelId}` | `SUB#{submissionId}#REVIEW#{at}` | — | — |
 | 試用チケット | `CH#{channelId}` | `SUB#{submissionId}#TICKET#{issuedAt}` | — | — |
 | 取り下げ | `CH#{channelId}` | `REVOKE#{revokedAt}` | — | 7 日のあいだ `REVOKED` / `{revokedAt}#{channelId}` |
-| 鍵の移し替え | `PUB#{publisherId}` | `TRANSFER#{transferId}` | — | `requested` のとき `QUEUE#TRANSFER` / `{requestedAt}` |
+| 鍵の移し替え | `PUB#{publisherId}` | `TRANSFER#{transferId}` | `TRANSFERS` / `{requestedAt}#{transferId}`（1.2。過去の申し出の一覧） | `requested` のとき `QUEUE#TRANSFER` / `{requestedAt}#{transferId}` |
+| 送ったメール（1.2） | `NOTICE#{noticeId}` | `NOTICE` | — | — |
 | 公開の先頭 | `PUBLICATION` | `HEAD` | — | — |
 | 公開の履歴 | `PUBLICATION` | `SEQ#{seq を 10 桁で 0 埋め}` | — | — |
 | 鍵セットの先頭 | `KEYSET` | `HEAD` | — | — |
 | 鍵セットの履歴 | `KEYSET` | `SEQ#{seq を 10 桁で 0 埋め}` | — | — |
 | 署名鍵 | `SIGNKEY` | `KEY#{keyId}` | — | — |
 | 操作の記録 | `AUDIT#{yyyy-mm}` | `{at}#{eventId}` | `TARGET#{種類}#{ID}` / `{at}` | — |
+
+- 送ったメール（1.2）は、SQS が同じ知らせを 2 度届けても 1 通だけ送るための印。`event`・`messageId` だけを持ち、30 日の TTL で消える（宛先は持たない）
 
 - 疎なインデックスの項目は、条件から外れたときに `GSI2PK`・`GSI2SK` を消す（例: 申請が `in_review` を出たら `QUEUE#REVIEW` から外れる）
 - `REVOKED` から外すのは、公開の Lambda が毎日の作り直しのときに行う（7 日を過ぎたものの `GSI2PK` を消す）
@@ -243,7 +246,7 @@ stateDiagram-v2
 | `status` | S | ○ | `active` / `revoked` |
 | `pendingSubmissionId` | S | — | 審査待ちの申請（M-2 の 1 つ） |
 | `latestApproved` | M | — | 最新の承認済みの版（下表）。M-8 |
-| `publisherChange` | M | — | `from`・`at`・`reason`・`until`。移し替えから 90 日（API-002 P-9）。`until` を過ぎたら公開の Lambda が載せなくなる |
+| `publisherChange` | M | — | `from`・`at`・`reason`・`until`（API-002 P-9）。1.2: 移し替えの承認で `from`（リストに載っている版の配信元）・`at`・`reason` を書き、新しい鍵の最初の版の承認で `until`（その 90 日後）を書く。公開の Lambda は、`until` があり、過ぎておらず、`from` が載せる版の配信元と違うときだけ載せる（V-16） |
 
 `latestApproved` の中身（リストの `channels[]` の 1 件になる）:
 
@@ -440,6 +443,7 @@ DynamoDB なので DDL はなく、テーブルとインデックスは CDK（`i
 
 | 日付 | 版 | 変更内容 | 変更者 |
 |---|---|---|---|
+| 2026-10-04 | 1.2 | 実装 3d（DES-006）に合わせた補足: 鍵の移し替えに GSI1 `TRANSFERS`（過去の申し出の一覧）、送ったメールの印 `NOTICE`、`publisherChange.until` を新しい鍵の最初の版の承認から数える | Claude |
 | 2026-10-03 | 0.1 | 草案（M-1〜M-4 は開発者の決定、M-5〜M-13 は提案） | Claude |
 | 2026-10-03 | 1.1 | 管理 API（API-001 1.0）に合わせて改訂: 鍵の移し替えを配信元ごとに（M-14）、配信元の鍵の状態、配信元の `deleted`（M-15）、申請のアイコン・説明・タグ・地域、見本用のプロンプトと見本の置き場所、公開の `manual`、署名鍵の `registered`、通知の操作の記録 | Claude（承認: 開発者） |
 | 2026-10-03 | 1.0 | M-5〜M-13 を承認。`revoked` に載せる期間を 7 日に変更（M-9）。取り下げたチャンネルも上限に数える。未決事項 No.1・No.2 を解消 | Claude（承認: 開発者） |

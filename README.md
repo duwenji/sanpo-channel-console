@@ -62,5 +62,6 @@ cd infra && npx cdk synth -c env=dev -c rootPublicKey=<base64url>
 - [DES-003](docs/design/DES-003-publisher-console.md): 配信元の API と画面（3a）
 - [DES-004](docs/design/DES-004-machine-review.md): 機械審査と試用チケット（3b）
 - [DES-005](docs/design/DES-005-review.md): 運用者の審査（3c）
+- [DES-006](docs/design/DES-006-transfer-notify.md): 鍵の移し替えと配信元へのメール（3d）
 - [費用](docs/operations/cost.md): 開発用は約 1.5 USD/月
 - [配備の手順](docs/operations/deploy.md): 開発用は配備済み（リスト https://d1vs7kc4zgmwrz.cloudfront.net、画面 https://d3gvjt5e1ced74.cloudfront.net）

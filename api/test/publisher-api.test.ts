@@ -3,7 +3,7 @@ import { accountId, b64url, generateEd25519, signDocument, signEd25519, utf8, ve
 import { makeTestProvider, type TestProvider } from '@sanpo-console/protocol/testing';
 import { randomBytes, type KeyObject } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Deps } from '../src/console/deps.js';
+import type { Deps, Notice } from '../src/console/deps.js';
 import type { Caller } from '../src/console/http.js';
 import { route } from '../src/console/router.js';
 import { CursorCodec } from '../src/console/util.js';
@@ -19,6 +19,7 @@ let local: Awaited<ReturnType<typeof startDynamoLocal>>;
 let deps: Deps;
 let clock: number;
 let published: Trigger[];
+let notices: Notice[];
 let archived: string[];
 let deleted: string[];
 let presigned: { key: string; contentType: string; maxBytes: number }[];
@@ -34,6 +35,7 @@ beforeEach(async () => {
   const { table, db } = await freshTable(local.endpoint);
   clock = start.getTime();
   published = [];
+  notices = [];
   archived = [];
   deleted = [];
   presigned = [];
@@ -63,6 +65,7 @@ beforeEach(async () => {
     presignDownload: async (key) => `https://intake.example/${key}?signed`,
     readRecord: async () => undefined,
     writeRecord: async () => {},
+    notify: async (n) => void notices.push(n),
     publishApproved: async ({ packageSha256, iconSha256 }) => ({ packageUrl: `https://provider.example/pkg/${packageSha256}.zip`, iconUrl: `https://provider.example/icons/${iconSha256}.png` }),
   };
 });

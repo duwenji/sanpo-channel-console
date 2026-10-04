@@ -3,17 +3,22 @@ import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import type * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import type * as kms from 'aws-cdk-lib/aws-kms';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as secrets from 'aws-cdk-lib/aws-secretsmanager';
+import type * as sns from 'aws-cdk-lib/aws-sns';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { Construct } from 'constructs';
 import { existsSync } from 'node:fs';
@@ -36,6 +41,8 @@ export interface ConsoleAppProps {
   recordsBucket: s3.IBucket;
   /** The built machine-review Lambda (`validator/build/lambda/validator.zip`); build it before synthesizing. */
   validatorZip: string;
+  /** The operator's alarms (a notice that could not be sent). */
+  alarms: sns.ITopic;
 }
 
 const lambdaDefaults = (repoRoot: string): Partial<nodejs.NodejsFunctionProps> => ({
@@ -358,6 +365,56 @@ export class ConsoleApp extends Construct {
     intakeBucket.grantPut(validator, 'archive/*');
     props.recordsBucket.grantPut(validator, 'samples/*');
     intakeBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(validator), { prefix: 'intake/' });
+
+    // ---- the publishers' emails (ADR-001 A-19, API-001 C-14) ----
+    const deadNotices = new sqs.Queue(this, 'NotifyDeadLetters', { retentionPeriod: Duration.days(14), enforceSSL: true });
+    const notices = new sqs.Queue(this, 'NotifyQueue', {
+      visibilityTimeout: Duration.minutes(2),
+      deadLetterQueue: { queue: deadNotices, maxReceiveCount: 3 }, // the notifier's MAX_ATTEMPTS
+      enforceSSL: true,
+    });
+    notices.grantSendMessages(consoleFn);
+    consoleFn.addEnvironment('NOTIFY_QUEUE_URL', notices.queueUrl);
+    const notifier = new nodejs.NodejsFunction(this, 'Notify', {
+      ...lambdaDefaults(repoRoot),
+      ...logGroupFor(this, 'NotifyLogs', config),
+      entry: `${repoRoot}api/src/notify/handler.ts`,
+      memorySize: 256,
+      timeout: Duration.seconds(20),
+      environment: {
+        TABLE_NAME: props.table.tableName,
+        USER_POOL_ID: userPool.userPoolId,
+        CONSOLE_URL: consoleUrl,
+        NOTIFY_MODE: config.notify.mode,
+        ...(config.notify.mode === 'ses'
+          ? { NOTIFY_FROM: config.notify.from, ...(config.notify.configurationSet ? { SES_CONFIGURATION_SET: config.notify.configurationSet } : {}) }
+          : {}),
+        NODE_OPTIONS: '--enable-source-maps',
+      },
+    });
+    notifier.addEventSource(new SqsEventSource(notices, { batchSize: 10, reportBatchItemFailures: true }));
+    props.table.grantReadWriteData(notifier);
+    notifier.addToRolePolicy(new iam.PolicyStatement({ actions: ['cognito-idp:AdminGetUser'], resources: [userPool.userPoolArn] }));
+    if (config.notify.mode === 'ses') {
+      const domainName = config.notify.from.split('@')[1]!;
+      notifier.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['ses:SendEmail'],
+          resources: [
+            `arn:${stack.partition}:ses:${stack.region}:${stack.account}:identity/${domainName}`,
+            ...(config.notify.configurationSet ? [`arn:${stack.partition}:ses:${stack.region}:${stack.account}:configuration-set/${config.notify.configurationSet}`] : []),
+          ],
+        }),
+      );
+    }
+    new cloudwatch.Alarm(this, 'NoticesNotSent', {
+      metric: deadNotices.metricApproximateNumberOfMessagesVisible({ period: Duration.minutes(5), statistic: 'Maximum' }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'A publisher notice could not be sent after retries (dead-letter queue)',
+    }).addAlarmAction(new cwActions.SnsAction(props.alarms));
 
     new CfnOutput(stack, 'ConsoleUrl', { value: consoleUrl });
     new CfnOutput(stack, 'IntakeBucketName', { value: intakeBucket.bucketName });

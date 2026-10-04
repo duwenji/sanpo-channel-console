@@ -2,10 +2,11 @@ import { QueryCommand, type TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schemas } from '@sanpo-console/api-types';
 import { sha256Hex, utf8 } from '@sanpo-console/protocol';
 import { unzipSync } from 'fflate';
-import { auditItem, type Deps } from './deps.js';
+import { auditItem, notifyAfter, type Deps } from './deps.js';
 import { fail, ifMatch, json, object, requireOperator, text, withEtag, type Request, type Response } from './http.js';
 import { loadSubmission, submissionView, transact } from './publisher.js';
 import { loadChannel, page, type Item } from './shared.js';
+import { PUBLISHER_CHANGE_DAYS } from './transfer.js';
 import { ulid } from './util.js';
 
 type TransactItems = NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]['TransactItems']>;
@@ -201,6 +202,11 @@ export async function approveSubmission(deps: Deps, req: Request): Promise<Respo
     minAppVersion: MIN_APP_VERSION, approvedAt: at,
   };
   const decision = { action: 'approve', at, ...(message ? { message } : {}) };
+  // The first version with a transferred key starts the 90 days the list shows the change (API-002 P-9).
+  const pending = channel.publisherChange as { from: string; at: string; reason: string; until?: string } | undefined;
+  const change = pending && !pending.until && pending.from !== sub.accountId
+    ? { ...pending, until: new Date(Date.parse(at) + PUBLISHER_CHANGE_DAYS * 86_400_000).toISOString() }
+    : undefined;
   const items: TransactItems = [
     {
       Update: {
@@ -213,9 +219,12 @@ export async function approveSubmission(deps: Deps, req: Request): Promise<Respo
     {
       Update: {
         TableName: deps.table, Key: { PK: `CH#${channelId}`, SK: 'CH' },
-        UpdateExpression: 'SET latestApproved = :la, #s = :active, GSI2PK = :listed, GSI2SK = :order, updatedAt = :now, rev = rev + :one REMOVE pendingSubmissionId',
+        UpdateExpression: `SET latestApproved = :la, #s = :active, GSI2PK = :listed, GSI2SK = :order, updatedAt = :now, rev = rev + :one${change ? ', publisherChange = :pc' : ''} REMOVE pendingSubmissionId`,
         ConditionExpression: 'pendingSubmissionId = :sid', ExpressionAttributeNames: { '#s': 'status' },
-        ExpressionAttributeValues: { ':la': latestApproved, ':active': 'active', ':listed': 'LISTED', ':order': `CH#${channelId}`, ':now': at, ':one': 1, ':sid': sub.submissionId },
+        ExpressionAttributeValues: {
+          ':la': latestApproved, ':active': 'active', ':listed': 'LISTED', ':order': `CH#${channelId}`, ':now': at, ':one': 1, ':sid': sub.submissionId,
+          ...(change ? { ':pc': change } : {}),
+        },
       },
     },
     reviewItem(deps, req, sub, at, { action: 'approve', ...(message ? { message } : {}), ...(samplesIds ? { samplesIds } : {}) }),
@@ -233,6 +242,9 @@ export async function approveSubmission(deps: Deps, req: Request): Promise<Respo
   await transact(deps, items, { 0: ['precondition_failed', 'changed by someone else; read it again'] });
   await deps.requestPublish('approve');
   await Promise.all([deps.archiveUpload(String(sub.intakeKey)), deps.archiveUpload(String(sub.iconIntakeKey))]).catch(() => undefined);
+  await notifyAfter(deps, {
+    event: 'submission.approved', publisherId: String(sub.publisherId), channelId, submissionId: String(sub.submissionId), version: Number(sub.version), ...(message ? { message } : {}),
+  });
   const updated = submissionView(await loadSubmission(deps, channelId, String(sub.submissionId)));
   return json(200, { submission: updated, publication: 'pending' }, { etag: `"${updated.rev}"` });
 }
@@ -272,6 +284,10 @@ function decline(action: 'return' | 'reject') {
       { 0: ['precondition_failed', 'changed by someone else; read it again'] },
     );
     await Promise.all([deps.archiveUpload(String(sub.intakeKey)), deps.archiveUpload(String(sub.iconIntakeKey))]).catch(() => undefined);
+    await notifyAfter(deps, {
+      event: action === 'return' ? 'submission.returned' : 'submission.rejected', publisherId: String(sub.publisherId), channelId,
+      submissionId: String(sub.submissionId), ...(sub.version !== undefined ? { version: Number(sub.version) } : {}), findings, ...(message ? { message } : {}),
+    });
     const updated = submissionView(await loadSubmission(deps, channelId, String(sub.submissionId)));
     return json(200, { submission: updated, publication: 'none' }, { etag: `"${updated.rev}"` });
   };

@@ -13,7 +13,7 @@ import {
 /** A channel as the store keeps it: the list entry plus how long its publisher change is shown. */
 export interface StoredChannel {
   entry: Omit<ChannelEntry, 'publisherChange'>;
-  publisherChange?: { from: string; at: string; reason: string; until: string };
+  publisherChange?: { from: string; at: string; reason: string; until?: string };
 }
 
 /** The store in memory, for tests and local runs. */
@@ -30,7 +30,8 @@ export class MemoryStore implements PublicationStore {
 
   async listedChannels(now: Date) {
     return this.channels.map(({ entry, publisherChange }) => {
-      if (!publisherChange || Date.parse(publisherChange.until) <= now.getTime()) return { ...entry };
+      // As DynamoStore: shown once the listed version is by the new account, until `until` (API-002 P-9).
+      if (!publisherChange?.until || Date.parse(publisherChange.until) <= now.getTime() || publisherChange.from === entry.publisher) return { ...entry };
       const { until: _until, ...shown } = publisherChange;
       return { ...entry, publisherChange: shown };
     });
