@@ -160,4 +160,11 @@ describe('ConsoleStack', () => {
     expect(keyPolicy.match(/ED25519_SHA_512/g)?.length).toBe(2);
     expect(JSON.stringify(prod.findResources('AWS::IAM::Policy'))).not.toContain('kms:Sign');
   });
+
+  it('lets the console reach the AI for review samples, and nothing else outside', () => {
+    const csp = JSON.stringify(prod.findResources('AWS::CloudFront::ResponseHeadersPolicy'));
+    expect(csp).toContain('https://api.openai.com');
+    expect(csp).toContain('https://api.deepseek.com');
+    expect(csp).not.toContain('api.anthropic.com');
+  });
 });

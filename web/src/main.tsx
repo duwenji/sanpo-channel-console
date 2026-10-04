@@ -9,6 +9,7 @@ import { ChannelPage } from './pages/channel';
 import { HomePage } from './pages/home';
 import { KeysPage } from './pages/keys';
 import { PublicationsPage } from './pages/publications';
+import { ReviewPage, ReviewQueuePage } from './pages/review';
 import { PublisherPage, PublishersPage } from './pages/publishers';
 import { PublisherChannel, PublisherChannels } from './pages/publisher/channels';
 import { PublisherHome } from './pages/publisher/home';
@@ -62,6 +63,7 @@ function Gate({ config, auth, children }: { config: ConsoleConfig; auth: Auth; c
 
 const NAV: [string, string][] = [
   ['/', '概要'],
+  ['/review', '審査'],
   ['/publications', '公開'],
   ['/keys', '署名鍵・鍵セット'],
   ['/publishers', '配信元'],
@@ -91,6 +93,8 @@ function Shell({ session }: { session: Session }) {
         {operator ? (
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/review" element={<ReviewQueuePage />} />
+            <Route path="/review/:channelId/:submissionId" element={<ReviewPage />} />
             <Route path="/publications" element={<PublicationsPage />} />
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/publishers" element={<PublishersPage />} />

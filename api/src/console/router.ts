@@ -3,6 +3,7 @@ import type { Deps } from './deps.js';
 import { ApiError, fail, json, problem, type Caller, type Request, type Response } from './http.js';
 import * as op from './operator.js';
 import * as pub from './publisher.js';
+import * as review from './review.js';
 
 type Handler = (deps: Deps, req: Request) => Promise<Response>;
 
@@ -17,7 +18,7 @@ async function me(deps: Deps, req: Request): Promise<Response> {
   return json(200, { sub: req.caller.sub, roles: req.caller.roles, publisher });
 }
 
-/** Routes implemented so far; review, test tickets and key transfers come with stages 3b–3d. */
+/** Routes implemented so far; key transfers and notifications come with stage 3d. */
 const ROUTES: [string, string, Handler][] = [
   ['GET', '/api/me', me],
   // The publisher (implementation stage 3a).
@@ -39,6 +40,17 @@ const ROUTES: [string, string, Handler][] = [
   ['GET', '/api/channels/{channelId}/submissions/{submissionId}/test-tickets', pub.listTestTickets],
   // The operator.
   ['POST', '/api/admin/channels/{channelId}/revoke', op.revokeChannel],
+  // Review (implementation stage 3c).
+  ['GET', '/api/admin/review-queue', review.listReviewQueue],
+  ['GET', '/api/admin/channels/{channelId}/submissions/{submissionId}/package', review.getSubmissionPackage],
+  ['GET', '/api/admin/channels/{channelId}/submissions/{submissionId}/sample-prompts', review.getSamplePrompts],
+  ['POST', '/api/admin/channels/{channelId}/submissions/{submissionId}/samples', review.saveSamples],
+  ['GET', '/api/admin/channels/{channelId}/submissions/{submissionId}/reviews', review.listReviews],
+  ['POST', '/api/admin/channels/{channelId}/submissions/{submissionId}/start', review.startReview],
+  ['POST', '/api/admin/channels/{channelId}/submissions/{submissionId}/release', review.releaseReview],
+  ['POST', '/api/admin/channels/{channelId}/submissions/{submissionId}/approve', review.approveSubmission],
+  ['POST', '/api/admin/channels/{channelId}/submissions/{submissionId}/return', review.returnSubmission],
+  ['POST', '/api/admin/channels/{channelId}/submissions/{submissionId}/reject', review.rejectSubmission],
   ['GET', '/api/admin/publishers', op.listPublishers],
   ['GET', '/api/admin/publishers/{publisherId}', op.getPublisher],
   ['GET', '/api/admin/publishers/{publisherId}/channels', op.listPublisherChannels],

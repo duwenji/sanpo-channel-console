@@ -29,6 +29,15 @@ export interface Deps {
   packageUrl: (sha256: string) => string;
   /** Signs a document with the active signing key in KMS (ADR-001 A-8). */
   signDocument: (content: object) => Promise<SignedDocument>;
+  /** Reads an uploaded file from the intake bucket. */
+  readUpload: (key: string) => Promise<Uint8Array>;
+  /** A short-lived URL to download an uploaded file (5 minutes). */
+  presignDownload: (key: string) => Promise<string>;
+  /** Reads and writes the records bucket (review samples, DM-001 M-13). */
+  readRecord: (key: string) => Promise<string | undefined>;
+  writeRecord: (key: string, body: string) => Promise<void>;
+  /** Copies an approved package and icon to the public bucket (`pkg/`, `icons/`) and returns their URLs. */
+  publishApproved: (files: { packageKey: string; packageSha256: string; iconKey: string; iconSha256: string }) => Promise<{ packageUrl: string; iconUrl: string }>;
 }
 
 /** One entry of the audit log, written in the same transaction as the change (DM-001 AUDIT, DV-10). */

@@ -24,7 +24,9 @@
     "@aws-sdk/client-secrets-manager": "^3.1146.0",
     "@sanpo-console/api-types": "0.1.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1146.0",
-    "@aws-sdk/s3-presigned-post": "^3.1146.0"
+    "@aws-sdk/s3-presigned-post": "^3.1146.0",
+    "fflate": "^0.8.3",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",
