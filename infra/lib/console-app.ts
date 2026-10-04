@@ -196,8 +196,10 @@ export class ConsoleApp extends Construct {
             "default-src 'self'",
             "script-src 'self'",
             "style-src 'self'",
-            "img-src 'self' data:",
-            `connect-src 'self' https://${authDomain} https://cognito-idp.${stack.region}.${stack.urlSuffix} https://${intakeBucket.bucketRegionalDomainName}`,
+            // The icon of a submission under review comes from a presigned URL on the intake bucket.
+            `img-src 'self' data: https://${intakeBucket.bucketRegionalDomainName}`,
+            // The review samples call the AI from the browser with the operator's key (ADR-001 D-4, DES-005).
+            `connect-src 'self' https://${authDomain} https://cognito-idp.${stack.region}.${stack.urlSuffix} https://${intakeBucket.bucketRegionalDomainName} https://api.openai.com https://api.deepseek.com`,
             `form-action 'self' https://${authDomain}`,
             "frame-ancestors 'none'",
             "base-uri 'none'",
@@ -289,6 +291,12 @@ export class ConsoleApp extends Construct {
     consoleFn.addEnvironment('INTAKE_BUCKET', intakeBucket.bucketName);
     consoleFn.addEnvironment('PUBLIC_BUCKET', props.publicBucket.bucketName);
     consoleFn.addEnvironment('PROVIDER_URL', props.providerUrl);
+    consoleFn.addEnvironment('RECORDS_BUCKET', props.recordsBucket.bucketName);
+    // Review (stage 3c): read the samples' prompts, keep the samples, publish approved files.
+    props.recordsBucket.grantRead(consoleFn, 'samples/*');
+    props.recordsBucket.grantReadWrite(consoleFn, 'reviews/*');
+    props.publicBucket.grantPut(consoleFn, 'pkg/*');
+    props.publicBucket.grantPut(consoleFn, 'icons/*');
     // Test tickets: the package is copied to trial/ (gone after 7 days), from intake/ or archive/.
     props.publicBucket.grantPut(consoleFn, 'trial/*');
     intakeBucket.grantRead(consoleFn, 'archive/*');

@@ -49,7 +49,7 @@ function failedConditions(e: unknown): number[] {
 }
 
 /** Runs a transaction, turning a failed condition at a given index into that error. */
-async function transact(deps: Deps, items: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]['TransactItems']>, onFail: Record<number, [ProblemCode, string]>) {
+export async function transact(deps: Deps, items: NonNullable<ConstructorParameters<typeof TransactWriteCommand>[0]['TransactItems']>, onFail: Record<number, [ProblemCode, string]>) {
   try {
     await deps.db.send(new TransactWriteCommand({ TransactItems: items }));
   } catch (e) {
@@ -59,7 +59,7 @@ async function transact(deps: Deps, items: NonNullable<ConstructorParameters<typ
   }
 }
 
-function submissionView(item: Item): Schemas['Submission'] {
+export function submissionView(item: Item): Schemas['Submission'] {
   return {
     submissionId: String(item.submissionId),
     channelId: String(item.channelId),
@@ -472,7 +472,7 @@ export async function listSubmissions(deps: Deps, req: Request): Promise<Respons
   return json(200, { items: items.map(submissionView), nextCursor });
 }
 
-async function loadSubmission(deps: Deps, channelId: string, submissionId: string): Promise<Item> {
+export async function loadSubmission(deps: Deps, channelId: string, submissionId: string): Promise<Item> {
   const item = await get(deps, `CH#${channelId}`, `SUB#${submissionId}`);
   return item?.type === 'submission' ? item : fail('not_found', `no submission ${submissionId}`);
 }

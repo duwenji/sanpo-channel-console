@@ -3,7 +3,8 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetPublicKeyCommand, KMSClient } from '@aws-sdk/client-kms';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
-import { CopyObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { b64url, providerId, signDocument, verifyDiscovery, type SignedDocument } from '@sanpo-console/protocol';
@@ -103,6 +104,34 @@ async function load(): Promise<Deps> {
       if (!key) throw new Error('no active signing key in the current keyset');
       const record = records.get(key.keyId)!;
       return signDocument(content, kmsSigner({ keyId: key.keyId, kmsKeyArn: String(record.kmsKeyArn), status: 'active' } satisfies SigningKeyRecord, kms));
+    },
+    readUpload: async (key) => {
+      const out = await s3.send(new GetObjectCommand({ Bucket: env('INTAKE_BUCKET'), Key: key }));
+      return new Uint8Array(await out.Body!.transformToByteArray());
+    },
+    presignDownload: (key) => getSignedUrl(s3, new GetObjectCommand({ Bucket: env('INTAKE_BUCKET'), Key: key }), { expiresIn: 300 }),
+    readRecord: async (key) => {
+      try {
+        const out = await s3.send(new GetObjectCommand({ Bucket: env('RECORDS_BUCKET'), Key: key }));
+        return await out.Body!.transformToString('utf-8');
+      } catch (e) {
+        if (e instanceof NoSuchKey) return undefined;
+        throw e;
+      }
+    },
+    writeRecord: async (key, body) => {
+      await s3.send(new PutObjectCommand({ Bucket: env('RECORDS_BUCKET'), Key: key, Body: body, ContentType: 'application/json' }));
+    },
+    publishApproved: async ({ packageKey, packageSha256, iconKey, iconSha256 }) => {
+      // Named by their hashes, so they are immutable and cached for long (ADR-001 A-7).
+      const copy = (from: string, to: string, contentType: string) =>
+        s3.send(new CopyObjectCommand({
+          Bucket: env('PUBLIC_BUCKET'), Key: to, CopySource: `${env('INTAKE_BUCKET')}/${from}`,
+          MetadataDirective: 'REPLACE', ContentType: contentType, CacheControl: 'public, max-age=31536000, immutable',
+        }));
+      await copy(packageKey, `pkg/${packageSha256}.zip`, 'application/zip');
+      await copy(iconKey, `icons/${iconSha256}.png`, 'image/png');
+      return { packageUrl: `${env('PROVIDER_URL')}/pkg/${packageSha256}.zip`, iconUrl: `${env('PROVIDER_URL')}/icons/${iconSha256}.png` };
     },
     deleteUser: async (sub) => {
       // Sign-in is by email, so the user name is the sub.

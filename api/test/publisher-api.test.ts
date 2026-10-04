@@ -59,6 +59,11 @@ beforeEach(async () => {
     },
     packageUrl: (sha) => `https://provider.example/pkg/${sha}.zip`,
     signDocument: (content) => signDocument(content, provider.signing),
+    readUpload: async () => new Uint8Array(),
+    presignDownload: async (key) => `https://intake.example/${key}?signed`,
+    readRecord: async () => undefined,
+    writeRecord: async () => {},
+    publishApproved: async ({ packageSha256, iconSha256 }) => ({ packageUrl: `https://provider.example/pkg/${packageSha256}.zip`, iconUrl: `https://provider.example/icons/${iconSha256}.png` }),
   };
 });
 

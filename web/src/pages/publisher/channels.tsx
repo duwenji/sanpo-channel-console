@@ -173,7 +173,15 @@ export function PublisherChannel() {
               <tr key={s.submissionId}>
                 <td><Time value={s.createdAt} /></td>
                 <td>{s.version ?? '—'}</td>
-                <td><span className={`tag ${s.state}`}>{STATE[s.state] ?? s.state}</span></td>
+                <td>
+                  <span className={`tag ${s.state}`}>{STATE[s.state] ?? s.state}</span>
+                  {s.decision && s.decision.action !== 'approve' && (
+                    <div className="small">
+                      {s.decision.message}
+                      {(s.decision.findings ?? []).map((f) => <div key={f.item + f.detail}>審査基準 {f.item}: {f.detail}</div>)}
+                    </div>
+                  )}
+                </td>
                 <td>
                   {s.validation
                     ? s.validation.ok
