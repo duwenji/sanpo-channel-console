@@ -12,3 +12,4 @@ build/
 coverage/
 # Local publishing output and dev keys (never commit private keys)
 .local/
+validator/build/

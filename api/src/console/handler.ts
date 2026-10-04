@@ -5,7 +5,10 @@ import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { CopyObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { b64url, providerId, signDocument, verifyDiscovery, type SignedDocument } from '@sanpo-console/protocol';
+import { kmsSigner } from '../publish/aws.js';
+import type { SigningKeyRecord } from '../publish/ports.js';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { createHash } from 'node:crypto';
 import type { Deps } from './deps.js';
@@ -32,8 +35,9 @@ async function cursorKey(): Promise<Buffer> {
 }
 
 async function load(): Promise<Deps> {
+  const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
   return {
-    db: DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } }),
+    db,
     table: env('TABLE_NAME'),
     now: () => new Date(),
     cursors: new CursorCodec(await cursorKey()),
@@ -67,6 +71,38 @@ async function load(): Promise<Deps> {
         throw e;
       }
       await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    },
+    publishTrial: async (sourceKey, sha256) => {
+      const key = `trial/${sha256}.zip`;
+      await s3.send(
+        new CopyObjectCommand({
+          Bucket: env('PUBLIC_BUCKET'), Key: key, CopySource: `${env('INTAKE_BUCKET')}/${sourceKey}`,
+          MetadataDirective: 'REPLACE', ContentType: 'application/zip', CacheControl: 'public, max-age=86400, immutable',
+        }),
+      );
+      return `${env('PROVIDER_URL')}/${key}`;
+    },
+    packageUrl: (sha256) => `${env('PROVIDER_URL')}/pkg/${sha256}.zip`,
+    signDocument: async (content) => {
+      // The newest key of the current keyset (verified with the pinned root key) that is in its
+      // validity, not revoked, and active in the table: the same choice the publisher makes (A-8).
+      const now = Date.now();
+      const table = env('TABLE_NAME');
+      const rootKey = env('ROOT_PUBLIC_KEY');
+      const head = (await db.send(new GetCommand({ TableName: table, Key: { PK: 'KEYSET', SK: 'HEAD' }, ConsistentRead: true }))).Item;
+      if (!head) throw new Error('no keyset has been registered');
+      const { keyset } = verifyDiscovery({
+        provider: providerId(b64url.decode(rootKey)), name: '-', versions: ['v1'], list: '/v1/channels.json', rootKey, keyset: head.document as SignedDocument,
+      });
+      const records = new Map(
+        ((await db.send(new QueryCommand({ TableName: table, KeyConditionExpression: 'PK = :pk', ExpressionAttributeValues: { ':pk': 'SIGNKEY' } }))).Items ?? []).map((k) => [String(k.keyId), k]),
+      );
+      const key = keyset.keys
+        .filter((k) => !keyset.revokedKeys.includes(k.keyId) && Date.parse(k.notBefore) <= now && now < Date.parse(k.notAfter) && records.get(k.keyId)?.status === 'active')
+        .sort((a, b) => Date.parse(b.notBefore) - Date.parse(a.notBefore))[0];
+      if (!key) throw new Error('no active signing key in the current keyset');
+      const record = records.get(key.keyId)!;
+      return signDocument(content, kmsSigner({ keyId: key.keyId, kmsKeyArn: String(record.kmsKeyArn), status: 'active' } satisfies SigningKeyRecord, kms));
     },
     deleteUser: async (sub) => {
       // Sign-in is by email, so the user name is the sub.

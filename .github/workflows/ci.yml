@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  # station-format from SanpoGuide's GitHub Packages (a public repository: GITHUB_TOKEN can read it).
+  packages: read
 
 jobs:
   check:
@@ -32,6 +34,17 @@ jobs:
         run: npx vitest run
       - name: Build the SPA
         run: npm run build -w web
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test and build the machine review
+        working-directory: validator
+        run: ./gradlew test lambdaZip --console=plain
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Synthesize (throwaway root key)
         working-directory: infra
         run: |

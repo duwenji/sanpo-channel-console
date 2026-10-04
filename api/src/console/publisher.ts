@@ -1,7 +1,7 @@
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { ProblemCode, Schemas } from '@sanpo-console/api-types';
-import { CHANNEL_ID, accountId, b64url, utf8, verifyEd25519 } from '@sanpo-console/protocol';
+import { CHANNEL_ID, accountId, b64url, providerId, utf8, verifyEd25519 } from '@sanpo-console/protocol';
 import { auditItem, type Deps } from './deps.js';
 import { fail, ifMatch, json, noContent, object, requiredText, text, withEtag, type Request, type Response } from './http.js';
 import { DEFAULT_LIMITS, channelView, get, loadChannel, loadPublisher, page, publisherView, type Item } from './shared.js';
@@ -13,6 +13,7 @@ const UPLOAD_WINDOW_MS = 15 * 60_000;
 const UPLOAD_EXPIRY_MS = 60 * 60_000;
 const MAX_PACKAGE = 2 * 1024 * 1024;
 const MAX_ICON = 100 * 1024;
+const TICKET_MS = 7 * 24 * 3600_000;
 
 // ---- helpers ----
 
@@ -516,4 +517,87 @@ export async function withdrawSubmission(deps: Deps, req: Request): Promise<Resp
   );
   await Promise.all([deps.archiveUpload(String(sub.intakeKey)), deps.archiveUpload(String(sub.iconIntakeKey))]).catch(() => undefined);
   return withEtag(200, submissionView(await loadSubmission(deps, channelId, submissionId)));
+}
+
+// ---- test tickets (API-002 試用チケット, ADR-001 A-13) ----
+
+/** States whose package passed the machine review and still exists to try. */
+const TRIABLE = ['awaiting_review', 'in_review', 'returned', 'approved'];
+
+function ticketView(item: Item): Schemas['TestTicket'] {
+  return {
+    submissionId: String(item.submissionId),
+    document: item.document as Schemas['SignedDocument'],
+    qr: JSON.stringify(item.document),
+    issuedAt: String(item.issuedAt),
+    expiresAt: String(item.expiresAt),
+  };
+}
+
+/**
+ * A ticket that lets the publisher try a package on their own phone before it is approved
+ * (developer mode only, 7 days, never shared). The package is copied to the public `trial/`
+ * path, which forgets it after 7 days; the ticket is signed with the list's signing key.
+ */
+export async function issueTestTicket(deps: Deps, req: Request): Promise<Response> {
+  const channelId = req.params.channelId!;
+  const submissionId = req.params.submissionId!;
+  const { publisher } = await visibleChannel(deps, req, channelId);
+  if (!publisher) return fail('forbidden', 'only the channel’s publisher issues tickets');
+  requireActive(publisher);
+  const sub = await loadSubmission(deps, channelId, submissionId);
+  const validation = sub.validation as { ok?: boolean } | undefined;
+  if (!TRIABLE.includes(String(sub.state)) || !validation?.ok) fail('invalid_state', `the submission is ${String(sub.state)}; only a package that passed the machine review can be tried`);
+
+  const now = deps.now();
+  const sha256 = String(sub.sha256);
+  const url =
+    sub.state === 'approved'
+      ? deps.packageUrl(sha256)
+      : await deps.publishTrial(sub.state === 'returned' ? String(sub.intakeKey).replace(/^intake\//, 'archive/') : String(sub.intakeKey), sha256);
+  const issuedAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + TICKET_MS).toISOString();
+  const document = await deps.signDocument({
+    type: 'test-ticket',
+    provider: providerId(b64url.decode(deps.rootPublicKey)),
+    channel: channelId,
+    publisher: String(sub.accountId),
+    package: { url, sha256, size: Number(sub.size), format: 1 },
+    issuedAt,
+    expiresAt,
+  });
+  const publisherId = String(publisher.publisherId);
+  const max = Number((publisher.limits as { ticketsPerDay?: number } | undefined)?.ticketsPerDay ?? DEFAULT_LIMITS.ticketsPerDay);
+  const item = { PK: `CH#${channelId}`, SK: `SUB#${submissionId}#TICKET#${issuedAt}`, type: 'ticket', submissionId, document, issuedAt, expiresAt, packageUrl: url };
+  await transact(
+    deps,
+    [
+      {
+        Update: {
+          TableName: deps.table, Key: { PK: `PUB#${publisherId}`, SK: `QUOTA#${jstDate(now)}` },
+          UpdateExpression: 'ADD tickets :one SET #ttl = :ttl', ConditionExpression: 'attribute_not_exists(tickets) OR tickets < :max',
+          ExpressionAttributeNames: { '#ttl': 'ttl' }, ExpressionAttributeValues: { ':one': 1, ':max': max, ':ttl': Math.floor(now.getTime() / 1000) + 3 * 24 * 3600 },
+        },
+      },
+      { Put: { TableName: deps.table, Item: item, ConditionExpression: 'attribute_not_exists(PK)' } },
+      auditItem(deps, req.caller, { action: 'ticket.issue', target: `CH#${channelId}`, detail: { submissionId, expiresAt } }),
+    ],
+    { 0: ['quota_exceeded', `test tickets per day: ${max} (resets at midnight in Japan)`] },
+  );
+  return json(201, ticketView(item));
+}
+
+export async function listTestTickets(deps: Deps, req: Request): Promise<Response> {
+  const channelId = req.params.channelId!;
+  const submissionId = req.params.submissionId!;
+  await visibleChannel(deps, req, channelId);
+  const out = await deps.db.send(
+    new QueryCommand({
+      TableName: deps.table,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :t)',
+      ExpressionAttributeValues: { ':pk': `CH#${channelId}`, ':t': `SUB#${submissionId}#TICKET#` },
+      ScanIndexForward: false,
+    }),
+  );
+  return json(200, { items: (out.Items ?? []).map(ticketView) });
 }

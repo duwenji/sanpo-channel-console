@@ -27,6 +27,8 @@ export interface ConsoleStackProps extends StackProps {
   config: EnvConfig;
   /** The built SPA; defaults to web/dist. */
   webDist?: string;
+  /** The built machine review; defaults to validator/build/lambda/validator.zip. */
+  validatorZip?: string;
 }
 
 /**
@@ -205,14 +207,29 @@ export class ConsoleStack extends Stack {
       });
     }
 
-    new ConsoleApp(this, 'Console', {
+    const consoleApp = new ConsoleApp(this, 'Console', {
       config,
       repoRoot,
       webDist: props.webDist ?? `${repoRoot}web/dist`,
       table,
       publisher,
       signingKeys,
+      publicBucket,
+      providerUrl: `https://${distribution.distributionDomainName}`,
+      recordsBucket,
+      validatorZip: props.validatorZip ?? `${repoRoot}validator/build/lambda/validator.zip`,
     });
+    // Test tickets are signed by the console API, under the same conditions as the list (A-8).
+    for (const key of signingKeys) {
+      key.addToResourcePolicy(
+        new iam.PolicyStatement({
+          actions: ['kms:Sign'],
+          principals: [new iam.ArnPrincipal(consoleApp.consoleFunction.role!.roleArn)],
+          resources: ['*'],
+          conditions: { StringEquals: { 'kms:SigningAlgorithm': 'ED25519_SHA_512', 'kms:MessageType': 'RAW' } },
+        }),
+      );
+    }
 
     new CfnOutput(this, 'ProviderUrl', { value: `https://${distribution.distributionDomainName}` });
     new CfnOutput(this, 'TableName', { value: table.tableName });
