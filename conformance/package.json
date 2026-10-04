@@ -7,7 +7,8 @@
   "bin": { "sanpo-conformance": "./src/cli.ts" },
   "scripts": {
     "check": "tsx src/cli.ts",
-    "serve": "tsx src/serve-cli.ts"
+    "serve": "tsx src/serve-cli.ts",
+    "vectors": "tsx src/app-vectors.ts"
   },
   "dependencies": { "@sanpo-console/protocol": "0.1.0" },
   "devDependencies": { "@sanpo-console/api": "0.1.0" }
