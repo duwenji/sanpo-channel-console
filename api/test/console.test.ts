@@ -4,7 +4,7 @@ import { b64url, generateEd25519, localSigner, publicKeyFromRaw, signDocument, u
 import { makeTestProvider, sampleChannel, type TestProvider } from '@sanpo-console/protocol/testing';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Deps } from '../src/console/deps.js';
+import type { Deps, Notice } from '../src/console/deps.js';
 import type { Caller, Response } from '../src/console/http.js';
 import { callerFrom, route } from '../src/console/router.js';
 import { CursorCodec, ulid } from '../src/console/util.js';
@@ -22,6 +22,7 @@ let deps: Deps;
 let rawDb: DynamoDBClient;
 let ticks = 0;
 let published: Trigger[];
+let notices: Notice[];
 let p: TestProvider;
 const kmsKeys = new Map<string, Uint8Array>();
 
@@ -36,6 +37,7 @@ beforeEach(async () => {
   ticks = 0;
   p = await makeTestProvider({ now });
   published = [];
+  notices = [];
   kmsKeys.clear();
   deps = {
     db,
@@ -62,6 +64,7 @@ beforeEach(async () => {
     presignDownload: async (key) => `https://intake.example/${key}?signed`,
     readRecord: async () => undefined,
     writeRecord: async () => {},
+    notify: async (n) => void notices.push(n),
     publishApproved: async ({ packageSha256, iconSha256 }) => ({ packageUrl: `https://provider.example/pkg/${packageSha256}.zip`, iconUrl: `https://provider.example/icons/${iconSha256}.png` }),
   };
 });

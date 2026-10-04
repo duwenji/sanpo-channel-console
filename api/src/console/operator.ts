@@ -2,7 +2,7 @@ import { GetCommand, QueryCommand, TransactWriteCommand, type QueryCommandInput 
 import type { Schemas } from '@sanpo-console/api-types';
 import { ProtocolError, b64url, providerId, publicKeyFromRaw, rawPublicKey, verifyDiscovery } from '@sanpo-console/protocol';
 import { createPublicKey } from 'node:crypto';
-import { auditItem, guarded, type Deps } from './deps.js';
+import { auditItem, guarded, notifyAfter, type Deps } from './deps.js';
 import { channelView, get, loadChannel, loadPublisher, page, publisherView, type Item } from './shared.js';
 import { fail, ifMatch, json, limit, object, requireOperator, requiredText, text, withEtag, type Request, type Response } from './http.js';
 
@@ -196,6 +196,7 @@ export async function revokeChannel(deps: Deps, req: Request): Promise<Response>
     ),
   );
   await deps.requestPublish('revoke');
+  await notifyAfter(deps, { event: 'channel.revoked', publisherId: String(channel.publisherId), channelId, message: reason });
   return withEtag(200, await channelView(deps, await loadChannel(deps, channelId)));
 }
 

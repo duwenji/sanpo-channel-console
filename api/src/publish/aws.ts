@@ -30,7 +30,7 @@ interface ChannelItem {
   channelId: string;
   publisherId: string;
   latestApproved?: Omit<ChannelEntry, 'id' | 'publisherName' | 'publisherChange'> & { submissionId: string };
-  publisherChange?: { from: string; at: string; reason: string; until: string };
+  publisherChange?: { from: string; at: string; reason: string; until?: string };
 }
 
 /** The publisher's view of the DynamoDB table of DM-001. */
@@ -56,7 +56,9 @@ export class DynamoStore implements PublicationStore {
       .filter((i) => i.latestApproved)
       .map((i) => {
         const { submissionId: _s, ...approved } = i.latestApproved!;
-        const change = i.publisherChange && Date.parse(i.publisherChange.until) > now.getTime() ? i.publisherChange : undefined;
+        // Only once a version with the new key is listed, and for 90 days from then (API-002 P-9, V-16).
+        const c = i.publisherChange;
+        const change = c?.until && Date.parse(c.until) > now.getTime() && c.from !== approved.publisher ? c : undefined;
         return {
           id: i.channelId,
           ...approved,

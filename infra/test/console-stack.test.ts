@@ -79,7 +79,7 @@ describe('ConsoleStack', () => {
       ScheduleExpression: 'cron(0 18 * * ? *)',
       Target: Match.objectLike({ Input: '{"trigger":"daily"}' }),
     });
-    prod.resourceCountIs('AWS::CloudWatch::Alarm', 2);
+    prod.resourceCountIs('AWS::CloudWatch::Alarm', 3);
   });
 
   it('keeps production data on stack deletion, but not development data', () => {
@@ -166,5 +166,24 @@ describe('ConsoleStack', () => {
     expect(csp).toContain('https://api.openai.com');
     expect(csp).toContain('https://api.deepseek.com');
     expect(csp).not.toContain('api.anthropic.com');
+  });
+
+  it('emails publishers through a queue with retries, a dead-letter queue and an alarm (ADR-001 A-19)', () => {
+    prod.hasResourceProperties('AWS::SQS::Queue', { RedrivePolicy: { maxReceiveCount: 3, deadLetterTargetArn: Match.anyValue() } });
+    prod.hasResourceProperties('AWS::Lambda::EventSourceMapping', { FunctionResponseTypes: ['ReportBatchItemFailures'] });
+    prod.hasResourceProperties('AWS::CloudWatch::Alarm', { AlarmDescription: Match.stringLikeRegexp('dead-letter'), AlarmActions: Match.anyValue() });
+    prod.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({ NOTIFY_MODE: 'log' }) } });
+    expect(JSON.stringify(prod.findResources('AWS::IAM::Policy'))).toContain('cognito-idp:AdminGetUser');
+    // No sending until a domain is set up (T-7); then only from that identity.
+    expect(JSON.stringify(prod.findResources('AWS::IAM::Policy'))).not.toContain('ses:SendEmail');
+    const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
+    const ses = Template.fromStack(
+      new ConsoleStack(app, 'Test-ses', {
+        config: { ...configs.prod, rootPublicKey: 'A'.repeat(43), notify: { mode: 'ses', from: 'no-reply@channels.example' } },
+        webDist, validatorZip, env: { region: 'ap-northeast-1', account: '123456789012' },
+      }),
+    );
+    ses.hasResourceProperties('AWS::Lambda::Function', { Environment: { Variables: Match.objectLike({ NOTIFY_MODE: 'ses', NOTIFY_FROM: 'no-reply@channels.example' }) } });
+    expect(JSON.stringify(ses.findResources('AWS::IAM::Policy'))).toContain('identity/channels.example');
   });
 });

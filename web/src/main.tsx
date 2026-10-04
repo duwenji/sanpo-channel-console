@@ -11,8 +11,10 @@ import { KeysPage } from './pages/keys';
 import { PublicationsPage } from './pages/publications';
 import { ReviewPage, ReviewQueuePage } from './pages/review';
 import { PublisherPage, PublishersPage } from './pages/publishers';
+import { TransfersPage } from './pages/transfers';
 import { PublisherChannel, PublisherChannels } from './pages/publisher/channels';
 import { PublisherHome } from './pages/publisher/home';
+import { PublisherKeys } from './pages/publisher/keys';
 import { PublisherSettings } from './pages/publisher/settings';
 import './style.css';
 
@@ -67,6 +69,7 @@ const NAV: [string, string][] = [
   ['/publications', '公開'],
   ['/keys', '署名鍵・鍵セット'],
   ['/publishers', '配信元'],
+  ['/transfers', '鍵の移し替え'],
   ['/channels', 'チャンネル'],
   ['/audit', '操作の記録'],
 ];
@@ -74,6 +77,7 @@ const NAV: [string, string][] = [
 const PUBLISHER_NAV: [string, string][] = [
   ['/', '概要'],
   ['/channels', 'チャンネル'],
+  ['/keys', '鍵'],
   ['/settings', '設定'],
 ];
 
@@ -99,6 +103,7 @@ function Shell({ session }: { session: Session }) {
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/publishers" element={<PublishersPage />} />
             <Route path="/publishers/:publisherId" element={<PublisherPage />} />
+            <Route path="/transfers" element={<TransfersPage />} />
             <Route path="/channels" element={<ChannelPage />} />
             <Route path="/channels/:channelId" element={<ChannelPage />} />
             <Route path="/audit" element={<AuditPage />} />
@@ -109,6 +114,7 @@ function Shell({ session }: { session: Session }) {
             <Route path="/" element={<PublisherHome />} />
             <Route path="/channels" element={<PublisherChannels />} />
             <Route path="/channels/:channelId" element={<PublisherChannel />} />
+            <Route path="/keys" element={<PublisherKeys />} />
             <Route path="/settings" element={<PublisherSettings />} />
             <Route path="*" element={<p>このページはありません。</p>} />
           </Routes>

@@ -22,7 +22,7 @@ function requirePublisherRole(req: Request) {
 }
 
 /** The caller's own publisher (API-001: one user, one publisher). */
-async function myPublisher(deps: Deps, req: Request): Promise<Item> {
+export async function myPublisher(deps: Deps, req: Request): Promise<Item> {
   requirePublisherRole(req);
   const user = await get(deps, `USER#${req.caller.sub}`, 'USER');
   if (!user?.publisherId) return fail('not_found', 'register as a publisher first');
@@ -221,11 +221,32 @@ export async function deleteMyPublisher(deps: Deps, req: Request): Promise<Respo
       });
     }
   }
+  if (pub.pendingTransferId) {
+    const transfer = await get(deps, `PUB#${publisherId}`, `TRANSFER#${String(pub.pendingTransferId)}`);
+    if (transfer) {
+      items.push(
+        {
+          Update: {
+            TableName: deps.table, Key: { PK: `PUB#${publisherId}`, SK: `TRANSFER#${String(transfer.transferId)}` },
+            UpdateExpression: 'SET #s = :c, decidedAt = :now, updatedAt = :now, rev = rev + :one REMOVE GSI2PK, GSI2SK', ExpressionAttributeNames: { '#s': 'state' },
+            ExpressionAttributeValues: { ':c': 'cancelled', ':now': now, ':one': 1 },
+          },
+        },
+        {
+          Update: {
+            TableName: deps.table, Key: { PK: `PUB#${publisherId}`, SK: `KEY#${String(transfer.toAccountId)}` },
+            UpdateExpression: 'SET #s = :u, unboundAt = :now, unboundReason = :why', ExpressionAttributeNames: { '#s': 'status' },
+            ExpressionAttributeValues: { ':u': 'unbound', ':now': now, ':why': 'transfer_cancelled' },
+          },
+        },
+      );
+    }
+  }
   items.push(
     {
       Update: {
         TableName: deps.table, Key: { PK: `PUB#${publisherId}`, SK: 'PUB' },
-        UpdateExpression: 'SET #s = :deleted, deletedAt = :now, displayName = :gone, updatedAt = :now, rev = rev + :one REMOVE contact, statusReason',
+        UpdateExpression: 'SET #s = :deleted, deletedAt = :now, displayName = :gone, updatedAt = :now, rev = rev + :one REMOVE contact, statusReason, pendingTransferId',
         ConditionExpression: 'rev = :rev', ExpressionAttributeNames: { '#s': 'status' },
         ExpressionAttributeValues: { ':deleted': 'deleted', ':gone': '（退会した配信元）', ':now': now, ':one': 1, ':rev': rev },
       },
@@ -264,7 +285,7 @@ export async function createKeyChallenge(deps: Deps, req: Request): Promise<Resp
 }
 
 /** Proof that the caller holds the key: its signature over a challenge they just got (ADR-001 A-5). */
-async function provenKey(deps: Deps, pub: Item, body: Record<string, unknown>) {
+export async function provenKey(deps: Deps, pub: Item, body: Record<string, unknown>) {
   const nonce = requiredText(body, 'nonce', { max: 26, pattern: /^[0-9A-HJKMNP-TV-Z]{26}$/ });
   const challenge = await get(deps, `PUB#${String(pub.publisherId)}`, `CHALLENGE#${nonce}`);
   if (!challenge || Date.parse(String(challenge.expiresAt)) <= deps.now().getTime()) fail('challenge_invalid', 'the challenge is unknown, used or expired');

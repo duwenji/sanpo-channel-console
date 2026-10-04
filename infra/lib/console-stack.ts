@@ -218,6 +218,7 @@ export class ConsoleStack extends Stack {
       providerUrl: `https://${distribution.distributionDomainName}`,
       recordsBucket,
       validatorZip: props.validatorZip ?? `${repoRoot}validator/build/lambda/validator.zip`,
+      alarms,
     });
     // Test tickets are signed by the console API, under the same conditions as the list (A-8).
     for (const key of signingKeys) {

@@ -93,7 +93,7 @@ export async function bindKey(api: ReturnType<typeof useSession>['api'], key: Pu
   });
 }
 
-function download(file: KeyFile) {
+export function download(file: KeyFile) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = url;

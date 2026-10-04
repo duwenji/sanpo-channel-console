@@ -61,3 +61,4 @@ ol.steps li { margin: 4px 0; }
   .facts { grid-template-columns: 1fr; }
   .facts dd { margin-bottom: 6px; }
 }
+.card { border: 1px solid var(--line); border-radius: 6px; padding: 12px 16px; margin: 12px 0; }

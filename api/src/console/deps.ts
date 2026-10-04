@@ -38,11 +38,42 @@ export interface Deps {
   writeRecord: (key: string, body: string) => Promise<void>;
   /** Copies an approved package and icon to the public bucket (`pkg/`, `icons/`) and returns their URLs. */
   publishApproved: (files: { packageKey: string; packageSha256: string; iconKey: string; iconSha256: string }) => Promise<{ packageUrl: string; iconUrl: string }>;
+  /** Queues an email to the publisher (ADR-001 A-19); the notification Lambda sends it. */
+  notify: (notice: Notice) => Promise<void>;
+}
+
+/** What happened, for the publisher's email (API-001 C-14). No samples, operator ids or tokens. */
+export interface Notice {
+  /** Identifies the notice, so a redelivered message is sent only once (CV-13). */
+  noticeId: string;
+  event: 'submission.approved' | 'submission.returned' | 'submission.rejected' | 'channel.revoked' | 'transfer.approved' | 'transfer.rejected';
+  publisherId: string;
+  channelId?: string;
+  submissionId?: string;
+  version?: number;
+  transferId?: string;
+  /** The operator's message or reason, shown to the publisher. */
+  message?: string;
+  findings?: { item: string; detail: string }[];
+  /** Pending submissions a transfer returned. */
+  returned?: number;
+}
+
+/**
+ * Queues a notice after the change is written. A failure is logged and never fails the operation
+ * (API-001 C-14): the change already happened.
+ */
+export async function notifyAfter(deps: Deps, notice: Omit<Notice, 'noticeId'>): Promise<void> {
+  try {
+    await deps.notify({ noticeId: ulid(deps.now().getTime()), ...notice });
+  } catch (e) {
+    console.error(JSON.stringify({ notice: notice.event, publisherId: notice.publisherId, error: e instanceof Error ? e.message : String(e) }));
+  }
 }
 
 /** One entry of the audit log, written in the same transaction as the change (DM-001 AUDIT, DV-10). */
 export function auditItem(
-  deps: Deps,
+  deps: Pick<Deps, 'table' | 'now'>,
   caller: Caller,
   entry: { action: string; target: string; reason?: string; detail?: Record<string, unknown> },
 ) {
