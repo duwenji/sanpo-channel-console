@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>チャンネル管理システム 構成図</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#F1F4F1; --surface:#FFFFFF; --band:#E6ECE7; --ink:#1B2621; --muted:#58675F;
+  --line:#BFCBC3; --accent:#2B7553; --accent-soft:#DCEDE3; --ext:#3A5A99; --hot:#A8621A; --hot-soft:#F6E8D8;
+  --warn:#A33A3A; --warn-soft:#F6E1E1;
+  --sans:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#111714; --surface:#19211D; --band:#1E2823; --ink:#E2EAE5; --muted:#9AABA2;
+    --line:#35433C; --accent:#5DBB8C; --accent-soft:#1F3A2C; --ext:#8EA8E2; --hot:#E3A35C; --hot-soft:#3A2A17;
+    --warn:#E38C8C; --warn-soft:#3A1F1F;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#111714; --surface:#19211D; --band:#1E2823; --ink:#E2EAE5; --muted:#9AABA2;
+  --line:#35433C; --accent:#5DBB8C; --accent-soft:#1F3A2C; --ext:#8EA8E2; --hot:#E3A35C; --hot-soft:#3A2A17;
+  --warn:#E38C8C; --warn-soft:#3A1F1F;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.75;padding-inline:16px}
+main{max-width:1060px;margin:0 auto;padding-block:40px 72px;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{text-wrap:balance;line-height:1.35;margin:0}
+h1{font-size:clamp(28px,4vw,40px);font-weight:900;letter-spacing:.02em}
+h2{font-size:22px;font-weight:700}
+p{margin:0;max-width:68ch}
+code{font-family:var(--mono);font-size:.88em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--accent);font-weight:700}
+header{display:flex;flex-direction:column;gap:14px}
+.facts{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:var(--muted)}
+.facts b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+section{display:flex;flex-direction:column;gap:16px}
+.sec-head{display:flex;flex-direction:column;gap:6px}
+figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.scroll{overflow-x:auto}
+figure svg{display:block;width:100%;min-width:760px;height:auto;color:var(--muted)}
+figcaption{font-size:13.5px;color:var(--muted);max-width:80ch;display:flex;flex-direction:column;gap:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:18px;height:12px;border-radius:3px;border:1.4px solid var(--line);background:var(--surface)}
+.sw.hot{background:var(--hot-soft);border-color:var(--hot)}
+.sw.acc{background:var(--accent-soft);border-color:var(--accent)}
+.sw.ext{border:1.4px dashed var(--ext)}
+.sw.warn{background:var(--warn-soft);border-color:var(--warn)}
+/* SVG vocabulary (as SanpoGuide's docs/architecture.html) */
+.band{fill:var(--band)}
+.bl{fill:var(--muted);font-size:12px;font-weight:700;text-anchor:middle}
+.bl-m{fill:var(--muted);font-family:var(--mono);font-size:11px;text-anchor:middle}
+.bx{fill:var(--surface);stroke:var(--line);stroke-width:1.2}
+.bx-hot{fill:var(--hot-soft);stroke:var(--hot);stroke-width:1.6}
+.bx-acc{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}
+.bx-ext{fill:var(--surface);stroke:var(--ext);stroke-width:1.2;stroke-dasharray:5 4}
+.bx-warn{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.3}
+.bx-dash{fill:var(--surface);stroke:var(--line);stroke-width:1.2;stroke-dasharray:5 4}
+.t{fill:var(--ink);font-size:13px;font-weight:700;text-anchor:middle}
+.tm{fill:var(--ink);font-family:var(--mono);font-size:12.5px;font-weight:600;text-anchor:middle}
+.s{fill:var(--muted);font-size:11px;text-anchor:middle}
+.sm{fill:var(--muted);font-family:var(--mono);font-size:10.5px;text-anchor:middle}
+.te{fill:var(--ext);font-size:13px;font-weight:700;text-anchor:middle}
+.th{fill:var(--hot);font-size:13px;font-weight:700;text-anchor:middle}
+.ta{fill:var(--accent);font-size:13px;font-weight:700;text-anchor:middle}
+.tw-{fill:var(--warn);font-family:var(--mono);font-size:12px;font-weight:600;text-anchor:middle}
+.lbl{fill:var(--muted);font-size:11px}
+.lbl-h{fill:var(--hot);font-size:11px}
+.left{text-anchor:start}
+.mid{text-anchor:middle}
+.ar{stroke:currentColor;stroke-width:1.4;fill:none}
+.ar-d{stroke:currentColor;stroke-width:1.3;fill:none;stroke-dasharray:4 4}
+.ar-hot{stroke:var(--hot);stroke-width:1.6;fill:none}
+.ar-ext{stroke:var(--ext);stroke-width:1.3;fill:none;stroke-dasharray:4 4}
+.ar-acc{stroke:var(--accent);stroke-width:1.6;fill:none}
+.ar-warn{stroke:var(--warn);stroke-width:1.3;fill:none}
+.brk{stroke:var(--accent);stroke-width:1.4;fill:none}
+.brk-h{stroke:var(--hot);stroke-width:1.4;fill:none}
+.div{stroke:var(--line);stroke-width:1;stroke-dasharray:3 3}
+.num{fill:var(--accent);font-family:var(--mono);font-size:12px;font-weight:600}
+.it{fill:var(--ink);font-size:12.5px}
+.chk{fill:var(--ink);font-size:12px}
+.note{fill:var(--muted);font-size:10.5px;text-anchor:end}
+/* tables */
+.tw{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:640px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+th{font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:700;background:var(--band);white-space:nowrap}
+td.pk{font-family:var(--mono);font-weight:600;color:var(--accent);white-space:nowrap}
+td.files{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.loc{display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.bar{height:6px;border-radius:3px;background:var(--accent)}
+.sub{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.sub h3{font-size:16px}
+.sub ul{margin:0;padding-left:1.3em;max-width:80ch}
+.sub li{margin:2px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.plan{border:1px dashed var(--ext);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.plan h3{font-size:16px;color:var(--ext)}
+</style>
+</head>
+<body>
+
+<main>
+  <header>
+    <div class="eyebrow">SANPO-CHANNEL-CONSOLE · AWS / TYPESCRIPT / KOTLIN</div>
+    <h1>チャンネル管理システムの構成図</h1>
+    <p>SanpoGuide のアプリに第三者のチャンネルを届けるため、配信元の申請を審査し、承認したものだけを署名したリストで公開するシステムです。5 枚の図で説明します。図 1 で「誰が何を使い、どこに何があるか」をつかみ、図 2〜5 で申請の一生・信頼の鎖・公開の処理・メールと警報を追います。</p>
+    <div class="facts">
+      <span>ソース <b>65 ファイル / 約 7,750 行</b>（TypeScript と Kotlin。テスト・生成した型を除く）</span>
+      <span>テスト <b>13 ファイル / 約 1,970 行</b></span>
+      <span>Lambda <b>5</b></span>
+      <span>管理 API <b>48 操作</b></span>
+      <span>DynamoDB <b>1 テーブル</b></span>
+      <span>S3 <b>4 バケット</b></span>
+    </div>
+    <p style="font-size:13.5px;color:var(--muted)">アプリとの境界は SanpoGuide の API-002（承認済みチャンネル・リスト）だけです。アプリはこのシステムの API を呼ばず、公開された静的ファイルを取りに来ます。図はコードと CDK から手で書き起こしたもの（2026-10-04 時点）です。Lambda・バケット・申請の状態を足したり変えたりしたときは、この文書と <code>docs/architecture.md</code> も更新してください。</p>
+  </header>
+
+  <!-- 1. Overview -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">図 1 · 全体</div>
+      <h2>公開の面に書くのは「公開の Lambda」だけ</h2>
+      <p>運用者と配信元が使う <b>管理の面</b>（ログインが要る画面と API）と、アプリが取りに来る <b>公開の面</b>（誰でも読める静的ファイル）は、DynamoDB と公開の Lambda でしかつながっていません。管理の面に何かあっても、公開されるのは公開の Lambda が署名したリストだけです。</p>
+    </div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 466" role="img" aria-label="4 層の構成図。利用者（配信元のブラウザ、運用者のブラウザ、SanpoGuide アプリ）、入口（受付用 S3、管理の CloudFront、Cognito、公開の CloudFront と S3）、処理（機械審査、管理 API、公開の Lambda）、データと鍵（記録用 S3、DynamoDB、KMS の署名鍵）。公開の面へ書くのは公開の Lambda だけ。">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="a1h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--hot)"/></marker>
+          <marker id="a1e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ext)"/></marker>
+        </defs>
+        <!-- bands -->
+        <rect class="band" x="100" y="12" width="880" height="100" rx="12"/>
+        <rect class="band" x="100" y="128" width="880" height="96" rx="12"/>
+        <rect class="band" x="100" y="240" width="880" height="96" rx="12"/>
+        <rect class="band" x="100" y="352" width="880" height="106" rx="12"/>
+        <text class="bl" x="50" y="58">利用者</text><text class="bl-m" x="50" y="74">browser / app</text>
+        <text class="bl" x="50" y="172">入口</text><text class="bl-m" x="50" y="188">edge</text>
+        <text class="bl" x="50" y="284">処理</text><text class="bl-m" x="50" y="300">Lambda</text>
+        <text class="bl" x="50" y="400">データ・鍵</text><text class="bl-m" x="50" y="416">state</text>
+
+        <!-- divider between the console side and the public side -->
+        <line class="div" x1="754" y1="18" x2="754" y2="452"/>
+        <text class="lbl" x="118" y="30">管理の面（ログインが要る）</text>
+        <text class="lbl" x="770" y="30">公開の面（誰でも読める）</text>
+
+        <!-- band A: users -->
+        <rect class="bx" x="116" y="38" width="200" height="64" rx="8"/>
+        <text class="t" x="216" y="60">配信元のブラウザ</text>
+        <text class="s" x="216" y="77">申請・試用チケット・移し替え</text>
+        <text class="s" x="216" y="93" style="fill:var(--accent)">秘密鍵はここで作り、ここだけ</text>
+
+        <rect class="bx" x="336" y="38" width="200" height="64" rx="8"/>
+        <text class="t" x="436" y="60">運用者のブラウザ</text>
+        <text class="s" x="436" y="77">審査・承認・取り下げ</text>
+        <text class="s" x="436" y="93" style="fill:var(--accent)">AI のキーはページのメモリだけ</text>
+
+        <rect class="bx-ext" x="572" y="44" width="160" height="52" rx="8"/>
+        <text class="te" x="652" y="66">OpenAI / DeepSeek</text>
+        <text class="s" x="652" y="84">審査の見本を話させる</text>
+        <line class="ar-ext" x1="536" y1="70" x2="570" y2="70" marker-end="url(#a1e)"/>
+
+        <rect class="bx" x="790" y="38" width="174" height="64" rx="8"/>
+        <text class="t" x="877" y="60">SanpoGuide アプリ</text>
+        <text class="s" x="877" y="77">1 日ごとにリストを取得</text>
+        <text class="s" x="877" y="93" style="fill:var(--accent)">署名とハッシュを自分で確認</text>
+
+        <!-- band B: edge -->
+        <rect class="bx" x="116" y="144" width="150" height="64" rx="8"/>
+        <text class="t" x="191" y="166">受付用 S3</text>
+        <text class="s" x="191" y="183">署名つき POST で直接</text>
+        <text class="sm" x="191" y="199">2MB / 100KB を S3 が強制</text>
+
+        <rect class="bx" x="282" y="144" width="250" height="64" rx="8"/>
+        <text class="t" x="407" y="166">CloudFront（管理）</text>
+        <text class="s" x="407" y="183">画面（SPA）と /api/* を同じ配信元で</text>
+        <text class="sm" x="407" y="199">/api/* → HTTP API（JWT・流量制限）</text>
+
+        <rect class="bx" x="560" y="144" width="172" height="64" rx="8"/>
+        <text class="t" x="646" y="166">Cognito</text>
+        <text class="s" x="646" y="183">全員 MFA 必須</text>
+        <text class="sm" x="646" y="199">operator / publisher</text>
+        <line class="ar" x1="534" y1="176" x2="558" y2="176" marker-end="url(#a1)"/>
+
+        <rect class="bx-acc" x="776" y="144" width="188" height="64" rx="8"/>
+        <text class="ta" x="870" y="166">CloudFront + 公開用 S3</text>
+        <text class="sm" x="870" y="183">/.well-known · /v1 · /pkg</text>
+        <text class="sm" x="870" y="199">/icons · /trial</text>
+
+        <!-- users to edge -->
+        <line class="ar" x1="191" y1="102" x2="191" y2="142" marker-end="url(#a1)"/>
+        <text class="lbl left" x="198" y="124">パッケージを直接</text>
+        <line class="ar" x1="290" y1="102" x2="352" y2="142" marker-end="url(#a1)"/>
+        <line class="ar" x1="436" y1="102" x2="436" y2="142" marker-end="url(#a1)"/>
+        <line class="ar" x1="877" y1="102" x2="877" y2="142" marker-end="url(#a1)"/>
+        <text class="lbl left" x="884" y="124">GET だけ</text>
+
+        <!-- band C: lambdas -->
+        <rect class="bx" x="116" y="256" width="150" height="64" rx="8"/>
+        <text class="t" x="191" y="278">機械審査</text>
+        <text class="sm" x="191" y="295">validator（Kotlin）</text>
+        <text class="s" x="191" y="311">アプリと同じ station-format</text>
+        <line class="ar" x1="191" y1="208" x2="191" y2="254" marker-end="url(#a1)"/>
+        <text class="lbl left" x="198" y="234">2 つ届いたら</text>
+
+        <rect class="bx" x="282" y="256" width="250" height="64" rx="8"/>
+        <text class="t" x="407" y="278">管理 API</text>
+        <text class="sm" x="407" y="295">api/src/console</text>
+        <text class="s" x="407" y="311">権限・状態の移り方・操作の記録</text>
+        <line class="ar" x1="407" y1="208" x2="407" y2="254" marker-end="url(#a1)"/>
+
+        <rect class="bx-hot" x="790" y="256" width="174" height="64" rx="8"/>
+        <text class="th" x="877" y="278">公開の Lambda</text>
+        <text class="sm" x="877" y="295">api/src/publish</text>
+        <text class="s" x="877" y="311">同時に 1 つ・毎日 03:00 JST も</text>
+        <line class="ar-hot" x1="877" y1="256" x2="877" y2="210" marker-end="url(#a1h)"/>
+        <text class="lbl-h left" x="884" y="234">署名したリストを置く</text>
+
+        <!-- api -> publish -->
+        <line class="ar-hot" x1="532" y1="288" x2="788" y2="288" marker-end="url(#a1h)"/>
+        <text class="lbl-h mid" x="660" y="280">承認・取り下げ・移し替えのあと</text>
+        <text class="lbl-h mid" x="660" y="304">公開を頼む（待たない）</text>
+
+        <!-- band D: data and keys -->
+        <rect class="bx" x="116" y="368" width="150" height="74" rx="8"/>
+        <text class="t" x="191" y="392">記録用 S3</text>
+        <text class="sm" x="191" y="410">samples/ · reviews/</text>
+        <text class="sm" x="191" y="426">published/</text>
+
+        <rect class="bx" x="282" y="368" width="250" height="74" rx="8"/>
+        <text class="t" x="407" y="392">DynamoDB（1 テーブル）</text>
+        <text class="s" x="407" y="410">配信元・チャンネル・申請・審査・公開の記録</text>
+        <text class="s" x="407" y="427">変更は操作の記録と同じトランザクションで</text>
+
+        <rect class="bx-acc" x="560" y="368" width="172" height="74" rx="8"/>
+        <text class="ta" x="646" y="392">KMS 署名鍵</text>
+        <text class="sm" x="646" y="410">Ed25519 · 半年ごと</text>
+        <text class="s" x="646" y="426">鍵ポリシーで 2 つにだけ</text>
+
+        <!-- arrows into band D -->
+        <line class="ar" x1="191" y1="320" x2="191" y2="366" marker-end="url(#a1)"/>
+        <text class="lbl" x="184" y="346" style="text-anchor:end">見本用のプロンプト</text>
+        <line class="ar" x1="250" y1="320" x2="316" y2="366" marker-end="url(#a1)"/>
+        <line class="ar" x1="407" y1="320" x2="407" y2="366" marker-end="url(#a1)"/>
+        <line class="ar-d" x1="500" y1="320" x2="590" y2="366" marker-end="url(#a1)"/>
+        <text class="lbl" x="472" y="346" style="text-anchor:end">試用チケットに署名</text>
+        <line class="ar-hot" x1="806" y1="320" x2="712" y2="366" marker-end="url(#a1h)"/>
+        <text class="lbl-h left" x="772" y="358">要約に署名</text>
+        <path class="ar-hot" d="M948,320 L948,450 L480,450 L480,444" marker-end="url(#a1h)"/>
+        <text class="lbl-h" x="940" y="400" style="text-anchor:end">載せるチャンネル・</text>
+        <text class="lbl-h" x="940" y="415" style="text-anchor:end">取り下げを読む</text>
+      </svg>
+      </div>
+      <figcaption>
+        <div class="legend">
+          <span><i class="sw hot"></i>公開の面に書く唯一の部品</span>
+          <span><i class="sw acc"></i>アプリが信用の根拠にするもの（署名鍵と、その署名が付いたもの）</span>
+          <span><i class="sw ext"></i>外部サービス</span>
+          <span>緑の文字: その場所から外に出ないもの</span>
+        </div>
+        <p>配信元のパッケージは管理 API を通らず、署名つき POST で受付用 S3 に直接届きます。大きさと種類は S3 が拒むので、Lambda は大きなファイルを受けません。届くと機械審査が動き、パッケージとアイコンの<b>両方</b>がそろった時点で確かめます。</p>
+        <p>KMS の署名鍵は IAM ではなく<b>鍵ポリシー</b>で、公開の Lambda と管理 API（試用チケット）にだけ、純粋な Ed25519 での署名を許しています。CloudFront と S3 は信用の根拠ではありません。アプリが署名とハッシュを自分で確かめるからです。</p>
+        <p>メールの知らせ（SQS と通知の Lambda）、ログイン時の Cognito のトリガーは図 5 と表に分けました。</p>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- 2. A submission's life -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">図 2 · 申請の一生</div>
+      <h2>チャンネルごとに「決着していない申請」は 1 つだけ</h2>
+      <p>申請はアップロード待ちから始まり、機械審査と運用者の審査を経て、承認か、どこかの出口で終わります。決着していない間はチャンネルの <code>pendingSubmissionId</code> がその申請を指し、次の申請を受け付けません。出口に出たらチャンネルが空き、ファイルは <code>archive/</code> に移って 90 日で消えます。</p>
+    </div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 420" role="img" aria-label="申請の状態の移り方。uploading から validating、awaiting_review、in_review、approved へ進み、approved は superseded か revoked になる。途中の出口は expired、validation_failed、withdrawn、returned、rejected。">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="a2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+          <marker id="a2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/></marker>
+        </defs>
+
+        <!-- brackets -->
+        <path class="brk" d="M24,64 L24,54 L626,54 L626,64"/>
+        <text class="ta" x="325" y="44">決着していない申請（チャンネルに 1 つ）— 次の申請は pending_submission_exists</text>
+        <path class="brk-h" d="M324,92 L324,82 L784,82 L784,92"/>
+        <text class="lbl-h mid" x="554" y="76">試用チケットを出せる（差し戻したあとも）</text>
+
+        <!-- main row -->
+        <rect class="bx" x="24" y="120" width="128" height="58" rx="8"/>
+        <text class="tm" x="88" y="145">uploading</text><text class="s" x="88" y="164">署名つき POST を発行</text>
+        <rect class="bx" x="176" y="120" width="124" height="58" rx="8"/>
+        <text class="tm" x="238" y="145">validating</text><text class="s" x="238" y="164">2 つ届いた</text>
+        <rect class="bx" x="324" y="120" width="136" height="58" rx="8"/>
+        <text class="tm" x="392" y="145">awaiting_review</text><text class="s" x="392" y="164">審査待ちの一覧へ</text>
+        <rect class="bx" x="490" y="120" width="136" height="58" rx="8"/>
+        <text class="tm" x="558" y="145">in_review</text><text class="s" x="558" y="164">見本を作り判定する</text>
+        <rect class="bx-acc" x="660" y="120" width="124" height="58" rx="8"/>
+        <text class="tm" x="722" y="145" style="fill:var(--accent)">approved</text><text class="s" x="722" y="164">リストに載る</text>
+
+        <line class="ar" x1="152" y1="149" x2="174" y2="149" marker-end="url(#a2)"/>
+        <text class="lbl mid" x="164" y="112">S3 に届く</text>
+        <line class="ar" x1="300" y1="149" x2="322" y2="149" marker-end="url(#a2)"/>
+        <text class="lbl mid" x="312" y="112">機械審査</text>
+        <line class="ar" x1="460" y1="141" x2="488" y2="141" marker-end="url(#a2)"/>
+        <line class="ar" x1="490" y1="157" x2="462" y2="157" marker-end="url(#a2)"/>
+        <text class="lbl mid" x="475" y="112">運用者が開始 / 戻す</text>
+        <line class="ar-acc" x1="626" y1="149" x2="658" y2="149" marker-end="url(#a2a)"/>
+        <text class="lbl mid" x="642" y="112" style="fill:var(--accent)">承認</text>
+
+        <!-- approved outcomes -->
+        <rect class="bx" x="824" y="96" width="156" height="50" rx="8"/>
+        <text class="tm" x="902" y="118">superseded</text><text class="s" x="902" y="135">新しい版を承認した</text>
+        <rect class="bx-warn" x="824" y="160" width="156" height="50" rx="8"/>
+        <text class="tw-" x="902" y="182">revoked</text><text class="s" x="902" y="199">取り下げ（7 日載せる）</text>
+        <line class="ar" x1="784" y1="140" x2="822" y2="122" marker-end="url(#a2)"/>
+        <line class="ar-warn" x1="784" y1="160" x2="822" y2="182" marker-end="url(#a2w)"/>
+
+        <!-- exits -->
+        <rect class="bx-dash" x="24" y="262" width="128" height="58" rx="8"/>
+        <text class="tm" x="88" y="286">expired</text><text class="s" x="88" y="305">1 時間届かない</text>
+        <rect class="bx-dash" x="176" y="262" width="124" height="58" rx="8"/>
+        <text class="tm" x="238" y="286" style="font-size:11.5px">validation_failed</text><text class="s" x="238" y="305">理由のコードを記録</text>
+        <rect class="bx-dash" x="324" y="262" width="136" height="58" rx="8"/>
+        <text class="tm" x="392" y="286">withdrawn</text><text class="s" x="392" y="305">配信元が取り消し</text>
+        <rect class="bx-dash" x="490" y="262" width="136" height="58" rx="8"/>
+        <text class="tm" x="558" y="286">returned</text><text class="s" x="558" y="305">差し戻し・鍵の移し替え</text>
+        <rect class="bx-dash" x="660" y="262" width="124" height="58" rx="8"/>
+        <text class="tm" x="722" y="286">rejected</text><text class="s" x="722" y="305">却下（直せない）</text>
+
+        <line class="ar-d" x1="88" y1="178" x2="88" y2="260" marker-end="url(#a2)"/>
+        <line class="ar-d" x1="238" y1="178" x2="238" y2="260" marker-end="url(#a2)"/>
+        <line class="ar-d" x1="392" y1="178" x2="392" y2="260" marker-end="url(#a2)"/>
+        <line class="ar-d" x1="510" y1="178" x2="440" y2="260" marker-end="url(#a2)"/>
+        <line class="ar-d" x1="558" y1="178" x2="558" y2="260" marker-end="url(#a2)"/>
+        <line class="ar-d" x1="606" y1="178" x2="690" y2="260" marker-end="url(#a2)"/>
+        <text class="lbl" x="806" y="282">出口に来たら</text>
+        <text class="lbl" x="806" y="298">チャンネルが空き、</text>
+        <text class="lbl" x="806" y="314">ファイルは archive/ へ</text>
+
+        <!-- notes -->
+        <text class="it" x="24" y="356">・差し戻し・却下には審査基準の項目番号（例 2.2）つきの指摘が 1 つ以上要る。配信元の画面とメールに出る</text>
+        <text class="it" x="24" y="378">・承認のとき、受付用 S3 のパッケージを読み直し、機械審査のときと同じ SHA-256 かを確かめてから pkg/ に写す</text>
+        <text class="it" x="24" y="400">・鍵の移し替えを承認すると、古い鍵で署名した決着していない申請（uploading〜in_review）はすべて returned になる</text>
+      </svg>
+      </div>
+      <figcaption>
+        <div class="legend">
+          <span><i class="sw acc"></i>リストに載る</span>
+          <span><i class="sw warn"></i>アプリが端末から消す</span>
+          <span><i class="sw" style="border-style:dashed"></i>出口（決着）</span>
+        </div>
+        <p>機械審査の結果は、パッケージとアイコンの 2 つの知らせが同時に来ても 1 回しか記録されません。記録は <code>state = uploading</code> を条件にした 1 つのトランザクションだからです。同じ理由で、鍵の移し替えで先に <code>returned</code> になった申請に、あとから機械審査の結果が届いても上書きされません。</p>
+        <p>上限: 1 配信元のチャンネルは 5、申請は 1 日 20 回、試用チケットは 1 日 10 枚（日付は日本時間で数える）。運用者が配信元ごとに変えられます。</p>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- 3. Trust chain -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">図 3 · 信頼の鎖</div>
+      <h2>アプリが最初から知っているのは、提供元ID（ルート鍵の指紋）だけ</h2>
+      <p>アプリは利用者が登録した提供元ID から始めて、署名とハッシュを 1 段ずつたどります。どの段で合わなくても、その文書は捨てて前のものを使い続けます。鍵は 3 か所に分かれていて、どれもリポジトリと管理 API の外にあります。</p>
+    </div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 520" role="img" aria-label="信頼の鎖。左の列が鍵のありか（オフラインの端末、KMS、配信元のブラウザ）、中央の列が文書（鍵セット、リストの要約、リストの本体、パッケージ、配信元の署名、試用チケット）、右の列がアプリの確かめること。">
+        <defs>
+          <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="a3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+        </defs>
+        <text class="bl" x="140" y="24">鍵のありか</text>
+        <text class="bl" x="440" y="24">文書（公開の面）</text>
+        <text class="bl" x="790" y="24">アプリが確かめること</text>
+        <line class="div" x1="270" y1="34" x2="270" y2="508"/>
+        <line class="div" x1="610" y1="34" x2="610" y2="508"/>
+
+        <!-- keys -->
+        <rect class="bx-acc" x="30" y="44" width="220" height="70" rx="8"/>
+        <text class="ta" x="140" y="68">ルート鍵</text>
+        <text class="s" x="140" y="86">オフラインの端末（本番）</text>
+        <text class="sm" x="140" y="103">提供元ID sc1… = 公開鍵の指紋</text>
+
+        <rect class="bx-acc" x="30" y="148" width="220" height="70" rx="8"/>
+        <text class="ta" x="140" y="172">署名鍵（KMS）</text>
+        <text class="s" x="140" y="190">秘密鍵は KMS の外に出ない</text>
+        <text class="sm" x="140" y="207">k-2026-10 · 半年ごとに替える</text>
+
+        <rect class="bx" x="30" y="374" width="220" height="70" rx="8"/>
+        <text class="t" x="140" y="398">配信元の鍵</text>
+        <text class="s" x="140" y="416">配信元のブラウザ（WebCrypto）</text>
+        <text class="sm" x="140" y="433">アカウントID sg1… = 指紋</text>
+
+        <!-- documents -->
+        <rect class="bx" x="300" y="50" width="280" height="58" rx="8"/>
+        <text class="t" x="440" y="74">鍵セット</text>
+        <text class="sm" x="440" y="94">/.well-known/sanpo-channels</text>
+
+        <rect class="bx" x="300" y="154" width="280" height="58" rx="8"/>
+        <text class="t" x="440" y="178">リストの要約</text>
+        <text class="s" x="440" y="197">本体の SHA-256・大きさ・seq・期限</text>
+
+        <rect class="bx" x="300" y="238" width="280" height="58" rx="8"/>
+        <text class="t" x="440" y="262">リストの本体</text>
+        <text class="s" x="440" y="281">チャンネルごとにパッケージの SHA-256</text>
+
+        <rect class="bx" x="300" y="322" width="280" height="44" rx="8"/>
+        <text class="t" x="440" y="349">パッケージ（ZIP）・アイコン</text>
+
+        <rect class="bx" x="300" y="380" width="280" height="58" rx="8"/>
+        <text class="t" x="440" y="404">signature.json（ZIP の中）</text>
+        <text class="s" x="440" y="423">中のファイルすべての SHA-256</text>
+
+        <rect class="bx-dash" x="300" y="456" width="280" height="50" rx="8"/>
+        <text class="t" x="440" y="477">試用チケット（QR）</text>
+        <text class="s" x="440" y="495">審査前のパッケージの SHA-256・7 日</text>
+
+        <!-- sign arrows -->
+        <line class="ar-acc" x1="250" y1="79" x2="298" y2="79" marker-end="url(#a3a)"/>
+        <text class="lbl" x="256" y="72" style="fill:var(--accent)">署名</text>
+        <line class="ar-acc" x1="250" y1="183" x2="298" y2="183" marker-end="url(#a3a)"/>
+        <text class="lbl" x="256" y="176" style="fill:var(--accent)">署名</text>
+        <line class="ar" x1="250" y1="409" x2="298" y2="409" marker-end="url(#a3)"/>
+        <text class="lbl" x="256" y="402">署名</text>
+        <path class="ar-acc" d="M30,196 L14,196 L14,481 L298,481" marker-end="url(#a3a)"/>
+        <text class="lbl left" x="160" y="474" style="fill:var(--accent)">署名（試用チケット）</text>
+        <!-- keyset lists the signing key -->
+        <path class="ar-d" d="M300,98 L286,98 L286,140 L250,160" marker-end="url(#a3)"/>
+        <text class="lbl left" x="166" y="138">鍵セットに載る鍵だけ</text>
+
+        <!-- hash binds -->
+        <line class="ar" x1="440" y1="212" x2="440" y2="236" marker-end="url(#a3)"/>
+        <line class="ar" x1="440" y1="296" x2="440" y2="320" marker-end="url(#a3)"/>
+        <line class="ar" x1="440" y1="366" x2="440" y2="378" marker-end="url(#a3)"/>
+        <text class="lbl left" x="448" y="229">ハッシュで縛る</text>
+        <text class="lbl left" x="448" y="313">ハッシュで縛る</text>
+        <path class="ar-d" d="M580,481 L596,481 L596,344 L582,344" marker-end="url(#a3)"/>
+
+        <!-- checks -->
+        <text class="chk" x="630" y="66">・ルート鍵の指紋 = 利用者が登録した提供元ID</text>
+        <text class="chk" x="630" y="86">・ルート鍵の署名、seq が前より小さくない</text>
+        <text class="chk" x="630" y="106">・各署名鍵の有効期間は 1 年以内</text>
+        <text class="chk" x="630" y="170">・鍵セットにあり、失効しておらず、期間内の鍵</text>
+        <text class="chk" x="630" y="190">・期限（14 日以内）、seq の巻き戻しなし</text>
+        <text class="chk" x="630" y="210">・端末の時計が 1 日以上遅れていたら時計を疑う</text>
+        <text class="chk" x="630" y="268">・大きさと SHA-256 が要約と一致（1MB まで）</text>
+        <text class="chk" x="630" y="288">・取り下げ（revoked）に載ったものは消す</text>
+        <text class="chk" x="630" y="349">・大きさと SHA-256 がリストと一致（2MB まで）</text>
+        <text class="chk" x="630" y="404">・署名した鍵 = channel.json の publisher</text>
+        <text class="chk" x="630" y="424">　= リストの publisher（違えば publisherChange）</text>
+        <text class="chk" x="630" y="486">・開発者モードのときだけ。提供元を先に登録</text>
+      </svg>
+      </div>
+      <figcaption>
+        <p>KMS は 4,096 バイトまでしか署名できないので、リストは本体ではなく<b>要約</b>に署名します（API-002 P-8）。要約が本体の SHA-256 と大きさを持つので、本体がどれだけ大きくても署名は 1 回で済みます。</p>
+        <p>アプリ側の確認は SanpoGuide の <code>station-format</code>（<code>ProviderDocuments</code>）にあります。このリポジトリの <code>conformance/src/app-vectors.ts</code> が、同じ署名のコードで作った文書をアプリのテストに渡しているので、両側の解釈がずれると SanpoGuide のテストが落ちます。</p>
+        <p>配信元が鍵をなくしたら、運用者が鍵とは別の経路で本人確認したうえで新しい鍵に移します。新しい鍵で署名した最初の版が承認されるまで、リストには古い版（古い鍵）のまま載り、<code>publisherChange</code> は出しません。出すと <code>from</code> と <code>publisher</code> が同じになり、準拠テスト V-16 に反するためです。</p>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- 4. Publishing -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">図 4 · 公開の処理</div>
+      <h2>何度呼ばれても、リストは 1 つずつ順番に作る</h2>
+      <p>6 つのきっかけはすべて同じ公開の Lambda を呼びます。同時実行を 1 に絞り、公開の記録の先頭を <code>seq</code> を条件に書き換えるので、2 つの公開が重なっても <code>seq</code> は飛ばず、戻りません。内容が変わらなくても毎日作り直すのは、リストの期限が 14 日だからです。</p>
+    </div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 330" role="img" aria-label="公開の処理。きっかけ（承認、取り下げ、鍵の移し替え、鍵セットの登録、手動、毎日）が公開の Lambda を呼び、DynamoDB を読み、リストを作り、要約に KMS で署名し、S3 に置き、CloudFront を無効化し、公開の記録を書く。">
+        <defs>
+          <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="a4h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--hot)"/></marker>
+        </defs>
+        <text class="bl" x="80" y="22">きっかけ</text>
+        <rect class="bx" x="20" y="34" width="120" height="30" rx="6"/><text class="it mid" x="80" y="54">承認</text>
+        <rect class="bx" x="20" y="72" width="120" height="30" rx="6"/><text class="it mid" x="80" y="92">取り下げ</text>
+        <rect class="bx" x="20" y="110" width="120" height="30" rx="6"/><text class="it mid" x="80" y="130">鍵の移し替え</text>
+        <rect class="bx" x="20" y="148" width="120" height="30" rx="6"/><text class="it mid" x="80" y="168">鍵セットの登録</text>
+        <rect class="bx" x="20" y="186" width="120" height="30" rx="6"/><text class="it mid" x="80" y="206">手動（画面）</text>
+        <rect class="bx" x="20" y="224" width="120" height="44" rx="6"/><text class="it mid" x="80" y="243">毎日 03:00 JST</text><text class="sm" x="80" y="259">Scheduler</text>
+        <path class="ar" d="M140,49 L170,49 L170,246 L140,246 M140,87 L170,87 M140,125 L170,125 M140,163 L170,163 M140,201 L170,201"/>
+        <line class="ar" x1="170" y1="148" x2="196" y2="148" marker-end="url(#a4)"/>
+        <text class="lbl mid" x="80" y="292">管理 API は待たずに</text>
+        <text class="lbl mid" x="80" y="306">非同期で呼ぶ</text>
+
+        <rect class="bx-hot" x="198" y="112" width="150" height="72" rx="8"/>
+        <text class="th" x="273" y="138">公開の Lambda</text>
+        <text class="s" x="273" y="156">同時実行 1</text>
+        <text class="sm" x="273" y="173">trigger を記録に残す</text>
+
+        <!-- steps -->
+        <rect class="bx" x="384" y="34" width="190" height="66" rx="8"/>
+        <text class="num" x="398" y="56">1</text><text class="t left" x="414" y="56">DynamoDB から読む</text>
+        <text class="s left" x="398" y="74">LISTED（載せるチャンネル）</text>
+        <text class="s left" x="398" y="90">REVOKED（7 日以内の取り下げ）</text>
+
+        <rect class="bx" x="384" y="114" width="190" height="66" rx="8"/>
+        <text class="num" x="398" y="136">2</text><text class="t left" x="414" y="136">本体を作る</text>
+        <text class="s left" x="398" y="154">seq = 前回 + 1、期限 14 日</text>
+        <text class="s left" x="398" y="170">publisherChange は 90 日まで</text>
+
+        <rect class="bx-acc" x="384" y="194" width="200" height="66" rx="8"/>
+        <text class="num" x="398" y="216">3</text><text class="t left" x="414" y="216">要約に署名（KMS）</text>
+        <text class="s left" x="398" y="234">鍵セットに載り期間内で active の</text>
+        <text class="s left" x="398" y="250">いちばん新しい署名鍵</text>
+
+        <path class="ar" d="M348,148 L366,148 L366,67 L382,67" marker-end="url(#a4)"/>
+        <line class="ar" x1="479" y1="100" x2="479" y2="112" marker-end="url(#a4)"/>
+        <line class="ar" x1="479" y1="180" x2="479" y2="192" marker-end="url(#a4)"/>
+
+        <rect class="bx-acc" x="610" y="114" width="206" height="66" rx="8"/>
+        <text class="num" x="624" y="136">4</text><text class="t left" x="640" y="136">公開用 S3 に置く</text>
+        <text class="sm left" x="624" y="154">/v1/channels.json</text>
+        <text class="sm left" x="624" y="170">/.well-known/sanpo-channels</text>
+        <path class="ar" d="M584,227 L596,227 L596,147 L608,147" marker-end="url(#a4)"/>
+
+        <rect class="bx" x="610" y="194" width="206" height="66" rx="8"/>
+        <text class="num" x="624" y="216">5</text><text class="t left" x="640" y="216">CloudFront を無効化</text>
+        <text class="s left" x="624" y="234">リストと発見の文書だけ</text>
+        <text class="s left" x="624" y="250">（pkg/ は中身で名前が変わる）</text>
+        <line class="ar" x1="713" y1="180" x2="713" y2="192" marker-end="url(#a4)"/>
+
+        <rect class="bx" x="840" y="114" width="150" height="146" rx="8"/>
+        <text class="num" x="854" y="136">6</text><text class="t left" x="870" y="136">公開の記録</text>
+        <text class="s left" x="854" y="158">先頭（HEAD）を</text>
+        <text class="s left" x="854" y="174">seq を条件に書き換え、</text>
+        <text class="s left" x="854" y="190">履歴を同じ</text>
+        <text class="s left" x="854" y="206">トランザクションで足す</text>
+        <text class="sm left" x="854" y="230">published/{seq}.json</text>
+        <text class="s left" x="854" y="248">を記録用 S3 に</text>
+        <path class="ar" d="M816,227 L828,227 L828,187 L838,187" marker-end="url(#a4)"/>
+
+        <text class="lbl" x="610" y="290">失敗したら警報（5 分）。2 日続けて成功しなければ別の警報（図 5）。</text>
+        <text class="lbl" x="610" y="308">失敗しても前のリストは期限まで有効なので、アプリはしばらく困らない。</text>
+      </svg>
+      </div>
+      <figcaption>
+        <p>パッケージとアイコンは承認のときに管理 API が <code>pkg/{SHA-256}.zip</code>・<code>icons/{SHA-256}.png</code> に置きます。名前が中身のハッシュなので、同じ名前の中身は変わらず、1 年キャッシュしてよい（<code>immutable</code>）。無効化が要るのはリストと発見の文書だけです。</p>
+        <p>手元では AWS なしで同じ処理を流せます（<code>MemoryStore</code> と <code>MemoryStorage</code>、使い捨ての鍵）。README の「手元で公開して、準拠テストをかける」を参照。</p>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- 5. Notices and alarms -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">図 5 · メールと警報</div>
+      <h2>メールが届かなくても、操作は失敗にしない</h2>
+      <p>判定・取り下げ・移し替えの結果は、状態を書いた<b>あと</b>で SQS に知らせを入れ、通知の Lambda が配信元に送ります。キューに入れられない・送れないときも、操作そのものは成功のままです。</p>
+    </div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 1000 250" role="img" aria-label="管理 API が SQS に知らせを入れ、通知の Lambda が Cognito で確認済みのアドレスを調べて SES で送る。3 回失敗するとデッドレターキューに入り、警報が運用者に届く。公開の Lambda の失敗も警報になる。">
+        <defs>
+          <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="a5w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/></marker>
+          <marker id="a5e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ext)"/></marker>
+        </defs>
+        <rect class="bx" x="20" y="40" width="150" height="62" rx="8"/>
+        <text class="t" x="95" y="64">管理 API</text>
+        <text class="s" x="95" y="82">承認・差し戻し・却下</text>
+        <text class="s" x="95" y="96">取り下げ・移し替え</text>
+
+        <rect class="bx" x="210" y="48" width="110" height="46" rx="8"/>
+        <text class="t" x="265" y="76">SQS</text>
+        <line class="ar" x1="170" y1="71" x2="208" y2="71" marker-end="url(#a5)"/>
+        <text class="lbl mid" x="189" y="62">知らせ</text>
+
+        <rect class="bx" x="360" y="40" width="190" height="62" rx="8"/>
+        <text class="t" x="455" y="64">通知の Lambda</text>
+        <text class="s" x="455" y="82">NOTICE#{id} があれば送らない</text>
+        <text class="s" x="455" y="96">（2 度届いても 1 通）</text>
+        <line class="ar" x1="320" y1="71" x2="358" y2="71" marker-end="url(#a5)"/>
+
+        <rect class="bx" x="590" y="20" width="170" height="46" rx="8"/>
+        <text class="t" x="675" y="40">Cognito</text>
+        <text class="s" x="675" y="56">確認済みのアドレスを引く</text>
+        <line class="ar" x1="550" y1="60" x2="588" y2="46" marker-end="url(#a5)"/>
+
+        <rect class="bx-ext" x="590" y="82" width="170" height="46" rx="8"/>
+        <text class="te" x="675" y="102">SES</text>
+        <text class="s" x="675" y="118">本番でドメインの準備後</text>
+        <line class="ar-ext" x1="550" y1="82" x2="588" y2="102" marker-end="url(#a5e)"/>
+
+        <rect class="bx" x="800" y="48" width="180" height="62" rx="8"/>
+        <text class="t" x="890" y="72">操作の記録</text>
+        <text class="sm" x="890" y="90">notification.sent / failed</text>
+        <text class="s" x="890" y="104">宛先は残さない</text>
+        <line class="ar" x1="760" y1="104" x2="798" y2="86" marker-end="url(#a5)"/>
+        <text class="lbl mid" x="779" y="122">結果</text>
+
+        <!-- failure path -->
+        <rect class="bx-warn" x="210" y="150" width="190" height="46" rx="8"/>
+        <text class="t" x="305" y="170" style="fill:var(--warn)">デッドレターキュー</text>
+        <text class="s" x="305" y="186">3 回失敗したもの（14 日）</text>
+        <path class="ar-warn" d="M265,94 L265,148" marker-end="url(#a5w)"/>
+        <text class="lbl left" x="272" y="126" style="fill:var(--warn)">3 回目も失敗</text>
+
+        <rect class="bx" x="20" y="150" width="150" height="62" rx="8"/>
+        <text class="th" x="95" y="174">公開の Lambda</text>
+        <text class="s" x="95" y="192">失敗 / 2 日成功なし</text>
+
+        <rect class="bx-warn" x="440" y="150" width="210" height="62" rx="8"/>
+        <text class="t" x="545" y="174" style="fill:var(--warn)">警報（CloudWatch → SNS）</text>
+        <text class="s" x="545" y="192">運用者のメール（設定したときだけ）</text>
+        <line class="ar-warn" x1="400" y1="173" x2="438" y2="173" marker-end="url(#a5w)"/>
+        <path class="ar-warn" d="M170,200 L188,200 L188,224 L545,224 L545,214" marker-end="url(#a5w)"/>
+
+        <text class="lbl" x="690" y="170">開発用はドメインがないので SES を呼ばず、</text>
+        <text class="lbl" x="690" y="186">送る内容を記録するだけ（messageId = log-only）。</text>
+        <text class="lbl" x="690" y="202">開発用は警報の宛先も未設定。</text>
+      </svg>
+      </div>
+      <figcaption>
+        <p>本文に入るのは、結果・理由（指摘の項目番号と内容、運用者のメッセージ）・画面へのリンクだけです。見本、運用者の ID、トークンは入れません。宛先は配信元が登録した連絡先ではなく、Cognito で確認済みのメールアドレスです。</p>
+        <p>3 回目の失敗だけが <code>notification.failed</code> を記録してからデッドレターキューへ進みます。確認済みのアドレスがない・退会した配信元は、再送せずにすぐ <code>notification.failed</code>（<code>no_verified_email</code>）になります。</p>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- data -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">データの置き場所</div>
+      <h2>DynamoDB は 1 テーブル、S3 は役割ごとに 4 つ</h2>
+      <p>項目と属性の一覧は <code>docs/data-model.md</code>（DM-001）にあります。ここでは「何がどこにあって、いつ消えるか」だけをまとめます。</p>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>PK</th><th>中身</th><th>索引（GSI）</th><th>消えるとき</th></tr></thead>
+        <tbody>
+          <tr><td class="pk">USER#{sub}</td><td>ログインした人 → 配信元（1 人 1 配信元）</td><td>—</td><td>退会</td></tr>
+          <tr><td class="pk">PUB#{id}</td><td>配信元、配信元の鍵、鍵の移し替え、1 日の数、一度きりの文字列</td><td>GSI2 PUBLISHERS・QUEUE#TRANSFER、GSI1 TRANSFERS</td><td>1 日の数と一度きりの文字列は TTL。ほかは残す</td></tr>
+          <tr><td class="pk">ACCOUNT#{sg1…}</td><td>アカウントIDの予約</td><td>—</td><td>消さない（外した鍵も、認められなかった鍵も再利用させない）</td></tr>
+          <tr><td class="pk">CH#{id}</td><td>チャンネル、申請、審査の記録、試用チケット、取り下げ</td><td>GSI1 PUB#（持ち主ごと）、GSI2 LISTED・QUEUE#REVIEW・REVOKED</td><td>取り下げは 7 日でリストから外れる（記録は残す）</td></tr>
+          <tr><td class="pk">KEYSET · SIGNKEY · PUBLICATION</td><td>鍵セット、署名鍵、公開の記録（先頭と履歴）</td><td>—</td><td>残す</td></tr>
+          <tr><td class="pk">AUDIT#{yyyy-mm}</td><td>操作の記録（誰が・いつ・何を・理由）</td><td>GSI1 TARGET#…（対象ごと）</td><td>消さない</td></tr>
+          <tr><td class="pk">NOTICE#{id}</td><td>送ったメールの印（宛先は持たない）</td><td>—</td><td>30 日（TTL）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>バケット</th><th>置くもの</th><th>読む人</th><th>保持</th></tr></thead>
+        <tbody>
+          <tr><td class="pk">公開用</td><td><code>.well-known/</code>・<code>v1/</code>（リスト）、<code>pkg/</code>・<code>icons/</code>（承認したもの）、<code>trial/</code>（試用）</td><td>誰でも（CloudFront 経由のみ）</td><td><code>trial/</code> は 7 日。ほかは残す</td></tr>
+          <tr><td class="pk">受付用</td><td><code>intake/</code>（届いたばかり）、<code>archive/</code>（決着した申請）</td><td>管理 API・機械審査</td><td><code>intake/</code> 30 日、<code>archive/</code> 90 日</td></tr>
+          <tr><td class="pk">記録用</td><td><code>samples/</code>（見本用のプロンプト）、<code>reviews/</code>（AI の見本）、<code>published/</code>（公開したリスト）</td><td>管理 API・機械審査・公開の Lambda</td><td>残す（版管理あり）</td></tr>
+          <tr><td class="pk">画面用</td><td>SPA の静的ファイルと <code>config.json</code></td><td>誰でも（CloudFront 経由のみ）</td><td>配備のたびに入れ替え</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- repo map -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">リポジトリ</div>
+      <h2>どこに何があるか</h2>
+      <p>npm workspaces のモノレポ（Node.js 22 以上）と、Gradle の Kotlin が 1 つ。管理 API の契約は <code>docs/api/console.openapi.yaml</code> が元で、そこから作った型を API と画面の両方が使います。</p>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>場所</th><th>役割</th><th>行数</th></tr></thead>
+        <tbody>
+          <tr><td class="pk">api/src/console</td><td>管理 API の Lambda。運用者 <code>operator.ts</code>、配信元 <code>publisher.ts</code>、審査 <code>review.ts</code>、移し替え <code>transfer.ts</code>、ルーター、Cognito のトリガー</td><td><div class="loc"><span class="bar" style="width:72px"></span>2,328</div></td></tr>
+          <tr><td class="pk">web/src</td><td>画面（React + Vite）。運用者と配信元で 1 つの SPA。配信元の鍵と署名は <code>publisher-crypto.ts</code>、AI の見本は <code>ai.ts</code></td><td><div class="loc"><span class="bar" style="width:74px"></span>2,379</div></td></tr>
+          <tr><td class="pk">infra/lib</td><td>AWS CDK。共有部分と公開の面 <code>console-stack.ts</code>、管理の面 <code>console-app.ts</code>、環境ごとの設定 <code>config.ts</code></td><td><div class="loc"><span class="bar" style="width:23px"></span>747</div></td></tr>
+          <tr><td class="pk">api/src/publish</td><td>公開の Lambda。DB・S3・CloudFront・KMS は差し替え口の後ろ（手元では Memory 版）</td><td><div class="loc"><span class="bar" style="width:18px"></span>578</div></td></tr>
+          <tr><td class="pk">packages/protocol</td><td>API-002 の文書の作成と検証（署名・要約・鍵セット・ID）。公開・準拠テスト・CLI が共用</td><td><div class="loc"><span class="bar" style="width:16px"></span>520</div></td></tr>
+          <tr><td class="pk">conformance/src</td><td>API-002 の準拠テスト（任意の提供元の URL に）と、アプリ用のテストベクタ</td><td><div class="loc"><span class="bar" style="width:11px"></span>343</div></td></tr>
+          <tr><td class="pk">validator/src</td><td>機械審査の Lambda（Kotlin、Java 21）。判定は SanpoGuide の station-format</td><td><div class="loc"><span class="bar" style="width:10px"></span>327</div></td></tr>
+          <tr><td class="pk">tools/root-key · provision</td><td>ルート鍵の CLI（オフライン）、署名鍵と鍵セットの初期登録</td><td><div class="loc"><span class="bar" style="width:10px"></span>321</div></td></tr>
+          <tr><td class="pk">api/src/notify</td><td>通知の Lambda（SQS → SES、開発用は記録だけ）</td><td><div class="loc"><span class="bar" style="width:5px"></span>157</div></td></tr>
+          <tr><td class="pk">tools/e2e</td><td>開発用の環境での通しの確認（機械審査・試用チケット・審査・移し替え）</td><td><div class="loc"><span class="bar" style="width:13px"></span>416</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- environments -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">環境</div>
+      <h2>開発用は安く、本番はすべての守りを入れる</h2>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th></th><th>開発用（dev）</th><th>本番（prod）</th></tr></thead>
+        <tbody>
+          <tr><td>ルート鍵</td><td>開発者の端末（<code>~/.sanpo-channel-console/dev/</code>）</td><td>オフラインの端末（T-5 の手順）</td></tr>
+          <tr><td>アプリへの内蔵</td><td>しない（利用者が URL と提供元ID で足す）</td><td>内蔵する提供元</td></tr>
+          <tr><td>一覧のカーソルの鍵</td><td>配備のたびに作り直す（古いカーソルは使えなくなる）</td><td>Secrets Manager</td></tr>
+          <tr><td>WAF（Cognito）・DynamoDB の復旧</td><td>なし</td><td>あり</td></tr>
+          <tr><td>ログの保持</td><td>14 日</td><td>期限なし</td></tr>
+          <tr><td>メール</td><td>送らずに記録だけ（<code>notify: log</code>）</td><td>独自ドメイン（T-7）と SES の準備（T-8）のあと送る</td></tr>
+          <tr><td>費用</td><td>月 5 USD を超えそうなら通知（タグで集計）</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- where to change -->
+  <section>
+    <div class="sec-head">
+      <div class="eyebrow">変更の入口</div>
+      <h2>こうしたいときはここを開く</h2>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>やりたいこと</th><th>最初に開くファイル</th></tr></thead>
+        <tbody>
+          <tr><td>管理 API の操作を足す・変える</td><td><code>docs/api/console.openapi.yaml</code>（型を作り直す）→ <code>api/src/console/router.ts</code> と各ハンドラ。契約は <code>docs/console-api.md</code></td></tr>
+          <tr><td>申請の状態の移り方を変える</td><td><code>api/src/console/publisher.ts</code>（申請・取り消し）、<code>review.ts</code>（審査）、<code>validator/</code>（機械審査）。DM-001 の状態図も</td></tr>
+          <tr><td>機械で確かめる項目を変える</td><td>パッケージの形式なら SanpoGuide の <code>station-format</code>、管理システムだけが知る確認（版・配信元・アイコン）なら <code>validator/.../MachineReview.kt</code></td></tr>
+          <tr><td>リストに載せる項目を変える</td><td><code>api/src/publish/aws.ts</code>（<code>DynamoStore</code>）と <code>packages/protocol/src/types.ts</code>。形式は API-002 の改訂が要る</td></tr>
+          <tr><td>上限（チャンネル数・1 日の申請）を変える</td><td><code>api/src/console/shared.ts</code> の <code>DEFAULT_LIMITS</code>（配信元ごとは運用者の画面から）</td></tr>
+          <tr><td>審査の見本の AI を足す</td><td><code>web/src/ai.ts</code> の <code>AI_SERVICES</code> と、<code>infra/lib/console-app.ts</code> の CSP（<code>connect-src</code>）</td></tr>
+          <tr><td>メールの文面を変える</td><td><code>api/src/notify/notify.ts</code> の <code>render()</code></td></tr>
+          <tr><td>環境ごとの守りや費用を変える</td><td><code>infra/lib/config.ts</code>（<code>cost</code>・<code>notify</code>）。費用は <code>docs/operations/cost.md</code></td></tr>
+          <tr><td>署名鍵を入れ替える</td><td>KMS に鍵を作り <code>config.ts</code> の <code>signingKeyIds</code> に足す → 画面で登録 → ルート鍵で鍵セットに署名して登録</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="plan">
+    <h3>まだないもの</h3>
+    <p>本番の環境（別の AWS アカウント、オフラインで作るルート鍵、独自ドメイン、SES のサンドボックスの解除）と、アプリに内蔵する本番の提供元はまだありません。鍵の移し替えの本人確認の手順と、審査基準（SanpoGuide の <code>docs/channel-review-policy.md</code>）は運用の開始前に決めます。進み具合は <code>docs/TODO.md</code> にあります。</p>
+  </div>
+</main>
+</body>
+</html>

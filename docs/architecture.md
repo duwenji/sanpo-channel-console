@@ -4,9 +4,11 @@ sanpo-channel-console を 8 枚の図で説明する。図 1 で「誰が何を�
 
 - 何をするシステムか: SanpoGuide のアプリに第三者のチャンネルを届けるため、配信元の申請を審査し、承認したものだけを署名したリスト（承認済みチャンネル・リスト）で公開する
 - アプリとの境界は SanpoGuide の [API-002](https://github.com/duwenji/SanpoGuide/blob/main/docs/channel-list-api.md) だけ。アプリはこのシステムの API を呼ばず、公開された静的ファイルを取りに来る
-- 規模（2026-10-04）: TypeScript と Kotlin で約 10,000 行（生成した型を除く）。Lambda 5 つ、画面 1 つ（運用者と配信元で共用）、DynamoDB のテーブル 1 つ、S3 のバケット 4 つ
+- 規模（2026-10-04）: ソース 65 ファイル・約 7,750 行（TypeScript と Kotlin。テスト・生成した型・e2e を除く）、テスト 13 ファイル・約 1,970 行。Lambda 5 つ、画面 1 つ（運用者と配信元で共用）、管理 API 48 操作、DynamoDB のテーブル 1 つ、S3 のバケット 4 つ
 
-図はコードと CDK から手で書き起こしたもの。Lambda・バケット・項目の種類を足したり変えたりしたときは、この文書も更新する。設計の理由は [ADR-001](adr/ADR-001-aws-architecture.md)、データの細部は [DM-001](data-model.md)、API は [API-001](console-api.md) を見る。
+**手で配置した図・凡例・コードから確かめた細部つきの版は [architecture.html](architecture.html)**（ブラウザで開く）。この Markdown 版は GitHub の上で読むためのもので、同じ構成を Mermaid で描いている。
+
+図はコードと CDK から手で書き起こしたもの。Lambda・バケット・項目の種類を足したり変えたりしたときは、この文書と architecture.html の両方を更新する。設計の理由は [ADR-001](adr/ADR-001-aws-architecture.md)、データの細部は [DM-001](data-model.md)、API は [API-001](console-api.md) を見る。
 
 ## 図 1 · 全体: 3 種類の利用者と、AWS の上の 2 つの面
 
