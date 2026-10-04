@@ -10,12 +10,12 @@ SanpoGuide の第三者のチャンネルを審査して公開する **チャン
 
 ## 構成
 
-AWS（ap-northeast-1）。API Gateway・Lambda・DynamoDB・Cognito・KMS、公開は S3 と CloudFront。詳細は [ADR-001](docs/adr/ADR-001-aws-architecture.md)。npm workspaces のモノレポ（Node.js 22 以上）。
+AWS（ap-northeast-1）。API Gateway・Lambda・DynamoDB・Cognito・KMS・SQS、公開は S3 と CloudFront。全体を図で見るには **構成図**（[HTML 版](docs/architecture.html)はブラウザで開く。GitHub の上では [Markdown 版](docs/architecture.md)）、設計の理由は [ADR-001](docs/adr/ADR-001-aws-architecture.md)。npm workspaces のモノレポ（Node.js 22 以上）。
 
 ```
 packages/protocol  API-002 の文書の作成と検証（共通）
 packages/api-types 管理 API の型（docs/api/console.openapi.yaml から生成）
-api/               Lambda（TypeScript）。公開の処理（api/src/publish）と管理 API（api/src/console）
+api/               Lambda（TypeScript）。公開の処理（api/src/publish）、管理 API（api/src/console）、配信元へのメール（api/src/notify）
 tools/root-key     ルート鍵の CLI（オフラインで使う）
 tools/provision    配備した提供元に署名鍵・鍵セットを登録して公開する（運用者の画面ができるまで）
 conformance/       API-002 の準拠テスト（任意の提供元の URL に対して流せる）
