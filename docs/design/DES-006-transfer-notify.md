@@ -24,7 +24,7 @@
 |---|---|---|
 | ADR-001 | A-15（鍵の移し替え）、A-19（SES・SQS・デッドレターキュー・警報） | 実装（SES で実際に送るのは T-7・T-8 の後） |
 | API-001 | 移し替えの 6 操作、C-11、C-14、`transfer_pending`、CV-09、CV-13 | 実装 |
-| DM-001 | TRANSFER、配信元の鍵の状態、移し替えの承認のトランザクション、DV-08、`notification.sent`・`notification.failed` | 実装。1.2 として補足（下の J-5・J-6・J-10） |
+| DM-001 | TRANSFER、配信元の鍵の状態、移し替えの承認のトランザクション、DV-08、`notification.sent`・`notification.failed` | 実装。1.2 として補足し承認済み（下の J-5・J-6・J-10） |
 | SanpoGuide API-002 | P-9、`publisherChange`、V-16 | 実装 |
 
 ## 方針・決定事項
@@ -63,7 +63,7 @@
 | 2 | 実際にメールを送るのは、独自ドメイン（T-7）・DKIM/SPF/DMARC・SES のサンドボックスの解除（T-8）・バウンスと苦情の受け取りの後 | 本番の準備で |
 | 3 | 移し替えを承認したあと、`publisherChange` が載るのは新しい鍵の版が承認されてから。それまでのアプリは古い版を使い続ける | API-002 P-9 のとおり。漏れたときは運用者が取り下げを検討する（運用者の使い方に記載） |
 | 4 | 送ったあと記録の書き込みに失敗すると、再送で 2 通になりうる | 起きにくく、害も小さいので受け入れる |
-| 5 | DM-001 1.2 の補足（GSI1 `TRANSFERS`、`NOTICE`、`publisherChange.until` の数え方） | 開発者の承認 |
+| 5 | ~~DM-001 1.2 の補足（GSI1 `TRANSFERS`、`NOTICE`、`publisherChange.until` の数え方）~~ → 承認済み（2026-10-04） | — |
 
 ## 関連ドキュメント・参照リンク
 
