@@ -27,6 +27,7 @@ flowchart LR
 | **配信元**（チャンネルを作る人） | [配信元ガイド](publisher.md) | 登録、鍵の紐づけ、パッケージの作成と署名、申請、試用、更新 |
 | **開発・保守をする人** | [開発・保守ガイド](maintainer.md) | 手元での開発とテスト、配備、初期設定、運用者の追加、費用と監視、障害の対応 |
 | どの立場でも、まず | [仕組み](concepts.md) | 鍵と署名の関係、チャンネルが公開されるまでの流れ |
+| 全体を図で見たい | [構成図](../architecture.md) | 利用者と AWS の部品、リポジトリ、申請から公開まで、データの置き場所 |
 
 ## 「予定」の印
 
@@ -72,6 +73,7 @@ flowchart LR
 
 | 文書 | 内容 |
 |---|---|
+| [構成図](../architecture.md) | システム全体を 8 枚の図で |
 | [ADR-001](../adr/ADR-001-aws-architecture.md) | AWS の構成と、その理由 |
 | [DM-001](../data-model.md) | データの持ち方と状態の移り方 |
 | [API-001](../console-api.md)・[OpenAPI](../api/console.openapi.yaml) | 管理 API の契約 |
